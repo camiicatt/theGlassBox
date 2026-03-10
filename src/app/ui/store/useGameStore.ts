@@ -34,7 +34,7 @@ type GameStore = {
   mode: Mode;
   setMode: (m: Mode) => void;
 
-  studentId: string | null; // alex for now
+  studentId: string | null;  //changed to kathy lol
 setStudentId: (id: string | null) => void;
 
 restartToken: number;
@@ -43,7 +43,7 @@ requestRestart: () => void;
 resetForNewStudent: () => void;
 
 saveToLocal: () => void;
-loadFromLocal: (id: string) => void;
+loadFromLocal: (id: string | null) => void;
 clearLocalFor: (id: string) => void;
 
 heroDead: boolean;

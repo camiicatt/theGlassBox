@@ -36,7 +36,7 @@ export default function StartScreen() {
               style={input}
               value={first}
               onChange={(e) => setFirst(e.target.value)}
-              placeholder="Alex"
+              placeholder="Kathy"
               autoFocus
             />
           </label>
@@ -47,7 +47,7 @@ export default function StartScreen() {
               style={input}
               value={lastInitial}
               onChange={(e) => setLastInitial(e.target.value)}
-              placeholder="J"
+              placeholder="K"
               maxLength={1}
             />
           </label>
@@ -71,7 +71,7 @@ export default function StartScreen() {
         </button>
 
         <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-          Example format: “Alex J”
+          Example format: “Kathy-K”
         </div>
       </div>
     </div>

@@ -17,6 +17,18 @@ function makeZeroProbs(): Record<Action, number> {
   return probs;
 }
 
+function normalizeProbs(probs: Record<Action, number>) {
+  let total = 0;
+  for (const a of ACTIONS) total += probs[a] ?? 0;
+
+  if (total <= 0) return probs;
+
+  for (const a of ACTIONS) {
+    probs[a] = (probs[a] ?? 0) / total;
+  }
+  return probs;
+}
+
 export function knnPredict(state: number[], examples: Example[], k = 7): Prediction {
   const probs = makeZeroProbs();
 
@@ -34,12 +46,16 @@ export function knnPredict(state: number[], examples: Example[], k = 7): Predict
 
   for (const s of scored) {
     const w = 1 / (s.dist + eps);
-    probs[s.ex.action] = (probs[s.ex.action] ?? 0) + w;
-    total += w;
+    const boosted = s.dist < 0.5 ? w * 1.25 : w;
+
+    probs[s.ex.action] = (probs[s.ex.action] ?? 0) + boosted;
+    total += boosted;
   }
 
   if (total > 0) {
-    for (const a of ACTIONS) probs[a] = probs[a] / total;
+    for (const a of ACTIONS) {
+      probs[a] = probs[a] / total;
+    }
   }
 
   let best: Action = "WAIT";
