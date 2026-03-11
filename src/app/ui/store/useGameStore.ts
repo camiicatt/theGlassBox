@@ -75,10 +75,21 @@ setHeroDead: (v: boolean) => void;
   battlePrompt: null | {
     enemyName: string;
     enemyHp: number;
+    enemyMaxHp: number;
+    heroHp: number;
+    heroMaxHp: number;
   };
 
-  openBattlePrompt: (p: { enemyName: string; enemyHp: number }) => void;
+  openBattlePrompt: (p: {
+    enemyName: string;
+    enemyHp: number;
+    enemyMaxHp: number;
+    heroHp: number;
+    heroMaxHp: number;
+  }) => void;
   closeBattlePrompt: () => void;
+  battleLog: string;
+  setBattleLog: (msg: string) => void;
 
   pendingAction: Action | null;
   setPendingAction: (a: Action | null) => void;
@@ -108,6 +119,7 @@ resetForNewStudent: () =>
     runDungeonIndex: 0,
     lowConfThreshold: 0.55,
     battlePrompt: null,
+    battleLog: "",
     pendingAction: null,
   }),
 
@@ -138,6 +150,7 @@ loadFromLocal: (id) => {
     mode: "TRAINING",
     prediction: null,
     battlePrompt: null,
+    battleLog: "",
     pendingAction: null,
   });
 },
@@ -175,6 +188,8 @@ clearLocalFor: (id) => {
   battlePrompt: null,
   openBattlePrompt: (p) => set({ battlePrompt: p }),
   closeBattlePrompt: () => set({ battlePrompt: null }),
+  battleLog: "",
+  setBattleLog: (msg) => set({ battleLog: msg }),
 
   pendingAction: null,
   setPendingAction: (a) => set({ pendingAction: a }),

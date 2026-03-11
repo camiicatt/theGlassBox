@@ -7,6 +7,8 @@ import { ACTIONS } from "../../game/actions";
 
 const W = 12;
 const H = 12;
+const HERO_MAX_HP = 5;
+const DUNGEONS_BEFORE_AI_RUN = 5;
 
 function uid() {
   return Math.random().toString(16).slice(2);
@@ -29,7 +31,7 @@ type DungeonTemplate = {
 
 export default class DungeonScene extends Phaser.Scene {
   private grid!: Tile[][];
-  private hero = { x: 1, y: 1, hp: 1 };
+  private hero = { x: 1, y: 1, hp: HERO_MAX_HP };
 
   private enemy: Enemy = { x: 8, y: 8, hp: 2, maxHp: 2, kind: "slime" };
   private goal = { x: 10, y: 10 };
@@ -49,6 +51,9 @@ export default class DungeonScene extends Phaser.Scene {
 
   private invulnTurns = 0;
   private lastRestartToken = 0;
+  private inBattleEncounter = false;
+  private battleJustStarted = false;
+  private trainingDungeonClears = 0;
 
   private heroSprite!: Phaser.GameObjects.Image;
   private enemySprite!: Phaser.GameObjects.Image;
@@ -193,7 +198,9 @@ export default class DungeonScene extends Phaser.Scene {
     this.input.on("pointerdown", () => this.game.canvas.focus());
 
     this.grid = this.makeTemplateDungeon();
+    this.trainingDungeonClears = 0;
     this.resetAiMemory();
+    useGameStore.getState().setBattleLog("");
 
     this.heroSprite = this.add.image(0, 0, "hero").setDepth(20).setOrigin(0.5);
     this.enemySprite = this.add.image(0, 0, "slime").setDepth(20).setOrigin(0.5);
@@ -230,13 +237,16 @@ export default class DungeonScene extends Phaser.Scene {
     if (st.restartToken !== this.lastRestartToken) {
       this.lastRestartToken = st.restartToken;
 
-      this.hero.hp = 1;
+      this.hero.hp = HERO_MAX_HP;
       this.grid = this.makeTemplateDungeon();
 
       this.healCooldown = 0;
       this.hiddenTurns = 0;
       this.invulnTurns = 6;
       this.enemySkipTurns = 2;
+      this.inBattleEncounter = false;
+      this.battleJustStarted = false;
+      st.setBattleLog("");
 
       this.resetAiMemory();
 
@@ -289,7 +299,7 @@ export default class DungeonScene extends Phaser.Scene {
   }
 
   private healthTextureFor(hp: number) {
-    const clamped = Phaser.Math.Clamp(hp, 0, 1);
+    const clamped = Phaser.Math.Clamp(hp / HERO_MAX_HP, 0, 1);
     const level = Math.round(clamped * 5); // 0..5 rounding 
     return `health${level}`;
   }
@@ -300,6 +310,7 @@ export default class DungeonScene extends Phaser.Scene {
 
   private showCombatText(message: string) {
     this.combatMessage = message;
+    useGameStore.getState().setBattleLog(message);
     this.combatText.setText(message);
     this.combatText.setVisible(true);
   }
@@ -390,6 +401,8 @@ export default class DungeonScene extends Phaser.Scene {
     this.healCooldown = 0;
     this.hiddenTurns = 0;
     this.invulnTurns = 0;
+    this.inBattleEncounter = false;
+    this.battleJustStarted = false;
 
     return g;
   }
@@ -440,20 +453,23 @@ export default class DungeonScene extends Phaser.Scene {
 
     if (st.mode !== "TRAINING") {
       if (st.battlePrompt) st.closeBattlePrompt?.();
+      st.setBattleLog("");
       return;
     }
 
-    const adjacent =
-      this.enemyAlive() &&
-      this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) === 1;
+    const shouldShow = this.inBattleEncounter && this.enemyAlive();
 
-    if (adjacent) {
+    if (shouldShow) {
       st.openBattlePrompt({
         enemyName: this.enemyLabelFor(this.enemy.kind),
         enemyHp: this.enemy.hp,
+        enemyMaxHp: this.enemy.maxHp,
+        heroHp: this.hero.hp,
+        heroMaxHp: HERO_MAX_HP,
       });
     } else {
       if (st.battlePrompt) st.closeBattlePrompt?.();
+      st.setBattleLog("");
     }
   }
 
@@ -474,10 +490,27 @@ export default class DungeonScene extends Phaser.Scene {
 
   private step(action: Action, recordExample: boolean) {
     const st = useGameStore.getState();
+    const isMoveAction =
+      action === "UP" || action === "DOWN" || action === "LEFT" || action === "RIGHT";
+    const isBattleAction =
+      action === "FIGHT" || action === "RUN" || action === "HIDE" || action === "HEAL";
 
     if (recordExample && st.currentState) {
       st.addExample({ state: st.currentState.slice(), action });
       st.saveToLocal?.();
+    }
+
+    if (this.inBattleEncounter && isMoveAction) {
+      this.showCombatText("You are in battle. Choose Fight, Run, Hide, or Heal.");
+      this.syncBattlePrompt();
+      this.render();
+      return;
+    }
+
+    if (!this.inBattleEncounter && isBattleAction && !this.enemyAlive()) {
+      this.showCombatText("There is no enemy to battle.");
+      this.render();
+      return;
     }
 
     this.applyGeneralAction(action);
@@ -488,18 +521,18 @@ export default class DungeonScene extends Phaser.Scene {
       this.runAway();
     } else if (action === "ATTACK") {
       this.attackEnemyIfAdjacent();
-    } else if (
-      action === "UP" ||
-      action === "DOWN" ||
-      action === "LEFT" ||
-      action === "RIGHT"
-    ) {
+    } else if (isMoveAction) {
       const { dx, dy } = this.actionToDelta(action);
       const nx = this.hero.x + dx;
       const ny = this.hero.y + dy;
       if (this.isWalkable(nx, ny)) {
         this.hero.x = nx;
         this.hero.y = ny;
+        if (this.enemyAlive() && this.hero.x === this.enemy.x && this.hero.y === this.enemy.y) {
+          this.inBattleEncounter = true;
+          this.battleJustStarted = true;
+          this.showCombatText(`Encounter! ${this.enemyLabelFor(this.enemy.kind)} blocks your path.`);
+        }
       }
     }
 
@@ -516,7 +549,7 @@ export default class DungeonScene extends Phaser.Scene {
     if (this.hiddenTurns > 0) this.hiddenTurns--;
     if (this.invulnTurns > 0) this.invulnTurns--;
 
-    if (this.enemyAlive()) {
+    if (this.enemyAlive() && !this.inBattleEncounter) {
       if (this.hiddenTurns > 0) {
         this.enemyWander();
       } else if (this.enemySkipTurns > 0) {
@@ -529,51 +562,60 @@ export default class DungeonScene extends Phaser.Scene {
     }
 
     if (this.enemyAlive() && this.hero.x === this.enemy.x && this.hero.y === this.enemy.y) {
+      if (!this.inBattleEncounter) {
+        this.inBattleEncounter = true;
+        this.battleJustStarted = true;
+      }
+    }
+
+    if (this.inBattleEncounter && this.enemyAlive()) {
+      if (this.battleJustStarted) {
+        this.battleJustStarted = false;
+      } else
       if (this.invulnTurns === 0) {
         const hitRoll = Math.random();
         const didHit = hitRoll < 0.8; // 80% accuracy
     
         if (didHit) {
-          const dmg = this.enemy.kind === "bigSlime" ? 0.35 : this.enemy.kind === "spider" ? 0.2 : 0.25;
+          const dmg = this.enemy.kind === "bigSlime" ? 2 : 1;
           this.hero.hp = Math.max(0, this.hero.hp - dmg);
-          this.showCombatText(`${this.enemyLabelFor(this.enemy.kind)} hits for ${dmg.toFixed(2)} HP`);
+          this.showCombatText(`${this.enemyLabelFor(this.enemy.kind)} hits for ${dmg} HP`);
         } else {
           this.showCombatText(`${this.enemyLabelFor(this.enemy.kind)} missed!`);
         }
-    
+
         this.invulnTurns = 2;
-    
-        const tries = [
-          { dx: 1, dy: 0 },
-          { dx: -1, dy: 0 },
-          { dx: 0, dy: 1 },
-          { dx: 0, dy: -1 },
-        ];
-    
-        Phaser.Utils.Array.Shuffle(tries);
-    
-        for (const t of tries) {
-          const nx = this.hero.x + t.dx;
-          const ny = this.hero.y + t.dy;
-          if (this.isWalkable(nx, ny) && !(nx === this.enemy.x && ny === this.enemy.y)) {
-            this.hero.x = nx;
-            this.hero.y = ny;
-            break;
-          }
-        }
       }
     }
 
+    const st = useGameStore.getState();
+
     if (this.hero.x === this.goal.x && this.hero.y === this.goal.y) {
+      if (st.mode === "TRAINING") {
+        this.trainingDungeonClears += 1;
+
+        if (this.trainingDungeonClears >= DUNGEONS_BEFORE_AI_RUN) {
+          st.setMode("AI_RUN");
+          st.setBattleLog("5 dungeons cleared. AI now takes control.");
+          this.showCombatText("5 dungeons cleared. AI now takes control.");
+          this.trainingDungeonClears = 0;
+        } else {
+          const remaining = DUNGEONS_BEFORE_AI_RUN - this.trainingDungeonClears;
+          this.showCombatText(`Dungeon cleared! ${remaining} to go before AI runs.`);
+        }
+      }
+
       this.grid = this.makeTemplateDungeon();
       this.resetAiMemory();
       this.rememberHeroPosition();
     }
 
-    const st = useGameStore.getState();
-
     if (this.hero.hp <= 0) {
       this.hero.hp = 0;
+      this.inBattleEncounter = false;
+      this.battleJustStarted = false;
+      if (st.battlePrompt) st.closeBattlePrompt?.();
+      st.setBattleLog("");
 
       const moment = {
         id: uid(),
@@ -599,10 +641,10 @@ export default class DungeonScene extends Phaser.Scene {
   private applyGeneralAction(action: Action) {
     if (action === "HEAL") {
       if (this.healCooldown === 0) {
-        const amount = 0.25;
-        this.hero.hp = Math.min(1, this.hero.hp + amount);
+        const amount = 1;
+        this.hero.hp = Math.min(HERO_MAX_HP, this.hero.hp + amount);
         this.healCooldown = 3;
-        this.showCombatText(`You healed ${amount.toFixed(2)} HP`);
+        this.showCombatText(`You healed ${amount} HP`);
       } else {
         this.showCombatText(`Heal is on cooldown`);
       }
@@ -639,9 +681,9 @@ export default class DungeonScene extends Phaser.Scene {
   private attackEnemyIfAdjacent() {
     if (!this.enemyAlive()) return;
   
-    const adjacent =
-      this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) === 1;
-    if (!adjacent) return;
+    const distance = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
+    const canAttack = distance <= 1;
+    if (!canAttack) return;
   
     const hitRoll = Math.random();
     const didHit = hitRoll < 0.85;
@@ -657,6 +699,8 @@ export default class DungeonScene extends Phaser.Scene {
   
     if (this.enemy.hp <= 0) {
       this.killEnemy();
+      this.inBattleEncounter = false;
+      this.battleJustStarted = false;
       this.showCombatText(`You defeated ${this.enemyLabelFor(this.enemy.kind)}!`);
     }
   }
@@ -671,19 +715,31 @@ export default class DungeonScene extends Phaser.Scene {
     const dx = Math.sign(this.hero.x - this.enemy.x);
     const dy = Math.sign(this.hero.y - this.enemy.y);
 
-    const options = [
-      { dx, dy: 0 },
-      { dx: 0, dy },
-      { dx: -dx, dy: 0 },
-      { dx: 0, dy: -dy },
-    ];
+    const options =
+      dx === 0 && dy === 0
+        ? [
+            { dx: 1, dy: 0 },
+            { dx: -1, dy: 0 },
+            { dx: 0, dy: 1 },
+            { dx: 0, dy: -1 },
+          ]
+        : [
+            { dx, dy: 0 },
+            { dx: 0, dy },
+            { dx: -dx, dy: 0 },
+            { dx: 0, dy: -dy },
+          ];
+
+    Phaser.Utils.Array.Shuffle(options);
 
     for (const o of options) {
       const nx = this.hero.x + o.dx;
       const ny = this.hero.y + o.dy;
-      if (this.isWalkable(nx, ny)) {
+      if (this.isWalkable(nx, ny) && !(nx === this.enemy.x && ny === this.enemy.y)) {
         this.hero.x = nx;
         this.hero.y = ny;
+        this.inBattleEncounter = false;
+        this.battleJustStarted = false;
         this.showCombatText("You ran away!");
         return;
       }
@@ -699,7 +755,7 @@ export default class DungeonScene extends Phaser.Scene {
 
     const adjacent =
       this.enemyAlive() &&
-      this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) === 1;
+      this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) <= 1;
 
     if (this.lastAiAction) {
       const reverse = this.reverseOf(this.lastAiAction);
@@ -731,7 +787,7 @@ export default class DungeonScene extends Phaser.Scene {
 
       if (action === "HEAL") {
         if (this.healCooldown > 0) continue;
-        if (this.hero.hp >= 0.95) continue;
+        if (this.hero.hp >= HERO_MAX_HP) continue;
         legal.push({ action, score: adjusted[action] });
         continue;
       }
@@ -749,6 +805,7 @@ export default class DungeonScene extends Phaser.Scene {
       }
 
       if (action === "UP" || action === "DOWN" || action === "LEFT" || action === "RIGHT") {
+        if (this.inBattleEncounter) continue;
         const { dx, dy } = this.actionToDelta(action);
         const nx = this.hero.x + dx;
         const ny = this.hero.y + dy;
@@ -810,12 +867,13 @@ export default class DungeonScene extends Phaser.Scene {
   private publishStateAndPrediction() {
     const store = useGameStore.getState();
     const enemyHp01 = this.enemyAlive() ? Math.min(1, this.enemy.hp / this.enemy.maxHp) : 0;
+    const heroHp01 = Math.min(1, this.hero.hp / HERO_MAX_HP);
 
     const stateVec = encodeNeighborhood(
       this.grid,
       this.hero.x,
       this.hero.y,
-      this.hero.hp,
+      heroHp01,
       this.healCooldown,
       this.hiddenTurns,
       enemyHp01

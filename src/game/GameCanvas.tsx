@@ -11,15 +11,16 @@ export default function GameCanvas() {
 
   return (
     <div
-  ref={containerRef}
-  style={{
-    width: "100%",
-    aspectRatio: "4 / 3",     // keeps it tall enough to look like a game
-    borderRadius: 16,
-    overflow: "hidden",
-    border: "1px solid #1f2a44",
-    background: "#050814",
-  }}
-/>
+      ref={containerRef}
+      style={{
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+        borderRadius: 16,
+        overflow: "hidden",
+        border: "1px solid #1f2a44",
+        background: "#050814",
+      }}
+    />
   );
 }

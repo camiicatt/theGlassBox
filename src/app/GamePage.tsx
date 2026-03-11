@@ -2,37 +2,45 @@ import GameCanvas from "../game/GameCanvas";
 import RightPanel from "./ui/RightPanel";
 import ReviewModal from "./ui/ReviewModal";
 import OptionBoard from "./ui/OptionBoard";
-import StartScreen from "./ui/StartScreen";
 import TutorialBanner from "./ui/TutorialBanner";
 import DeathModal from "./ui/DeathModal";
 
 export default function GamePage() {
   return (
-    <div style={{ minHeight: "100vh", background: "#050814", color: "#e5e7eb" }}>
-      <StartScreen />
-
-      <div style={{ maxWidth: 1280, margin: "0 auto", padding: 18 }}>
-  <TutorialBanner />
-
-  <div style={{ position: "relative" }}>
     <div
       style={{
+        height: "100vh",
+        background: "#050814",
+        color: "#e5e7eb",
+        padding: 16,
+        boxSizing: "border-box",
         display: "grid",
-        gridTemplateColumns: "1fr 360px",
-        gap: 16,
-        alignItems: "start",
+        gridTemplateRows: "auto 1fr",
+        gap: 12,
       }}
     >
-      <GameCanvas />
-      <RightPanel />
-    </div>
+      <TutorialBanner />
 
-    <OptionBoard />
-  </div>
+      <div style={{ position: "relative", minHeight: 0 }}>
+        <div
+          style={{
+            height: "100%",
+            display: "grid",
+            gridTemplateColumns: "1fr 360px",
+            gap: 16,
+            alignItems: "stretch",
+            minHeight: 0,
+          }}
+        >
+          <GameCanvas />
+          <RightPanel />
+        </div>
 
-  <ReviewModal />
-  <DeathModal />
-</div>
+        <OptionBoard />
+      </div>
+
+      <ReviewModal />
+      <DeathModal />
     </div>
   );
 }
