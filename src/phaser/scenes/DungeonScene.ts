@@ -191,7 +191,7 @@ export default class DungeonScene extends Phaser.Scene {
       padding: { left: 8, right: 8, top: 4, bottom: 4 },
     }).setDepth(40).setVisible(false);
 
-    this.healthBarSprite = this.add.image(0, 0, "health5").setDepth(25).setOrigin(2, 0.3);
+    this.healthBarSprite = this.add.image(0, 0, "health5").setDepth(25).setOrigin(1.5, 0.35);
         
     this.game.canvas.setAttribute("tabindex", "0");
     this.game.canvas.focus();
