@@ -64,7 +64,6 @@ export default class DungeonScene extends Phaser.Scene {
   private combatText!: Phaser.GameObjects.Text;
   private combatMessage = "";
 
-  //health bar information:
   private healthBarSprite!: Phaser.GameObjects.Image;
 
   private dungeonTemplates: DungeonTemplate[] = [
@@ -165,7 +164,6 @@ export default class DungeonScene extends Phaser.Scene {
     this.load.image("spider-blue", "/src/assets/monsters/spiderBlue.png");
     this.load.image("hero", "/src/assets/hero.png");
 
-    //health bar
     this.load.image("health0", "/src/assets/healthBar/health0.png");
     this.load.image("health1", "/src/assets/healthBar/health1.png");
     this.load.image("health2", "/src/assets/healthBar/health2.png");
@@ -192,7 +190,7 @@ export default class DungeonScene extends Phaser.Scene {
     }).setDepth(40).setVisible(false);
 
     this.healthBarSprite = this.add.image(0, 0, "health5").setDepth(25).setOrigin(1.5, 0.35);
-        
+
     this.game.canvas.setAttribute("tabindex", "0");
     this.game.canvas.focus();
     this.input.on("pointerdown", () => this.game.canvas.focus());
@@ -300,9 +298,10 @@ export default class DungeonScene extends Phaser.Scene {
 
   private healthTextureFor(hp: number) {
     const clamped = Phaser.Math.Clamp(hp / HERO_MAX_HP, 0, 1);
-    const level = Math.round(clamped * 5); // 0..5 rounding 
+    const level = Math.round(clamped * 5);
     return `health${level}`;
   }
+
   private resetAiMemory() {
     this.lastAiAction = null;
     this.recentHeroPositions = [];
@@ -314,7 +313,7 @@ export default class DungeonScene extends Phaser.Scene {
     this.combatText.setText(message);
     this.combatText.setVisible(true);
   }
-  
+
   private clearCombatText() {
     this.combatMessage = "";
     this.combatText.setText("");
@@ -528,7 +527,12 @@ export default class DungeonScene extends Phaser.Scene {
       if (this.isWalkable(nx, ny)) {
         this.hero.x = nx;
         this.hero.y = ny;
-        if (this.enemyAlive() && this.hero.x === this.enemy.x && this.hero.y === this.enemy.y) {
+
+        if (
+          this.enemyAlive() &&
+          this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) <= 1 &&
+          this.hasLineOfSight(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y)
+        ) {
           this.inBattleEncounter = true;
           this.battleJustStarted = true;
           this.showCombatText(`Encounter! ${this.enemyLabelFor(this.enemy.kind)} blocks your path.`);
@@ -555,27 +559,30 @@ export default class DungeonScene extends Phaser.Scene {
       } else if (this.enemySkipTurns > 0) {
         this.enemySkipTurns--;
       } else {
-        const dist = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
-        if (dist <= 5) this.enemyChase();
+        if (this.canEnemySeeHero(5)) this.enemyChase();
         else this.enemyWander();
       }
     }
 
-    if (this.enemyAlive() && this.hero.x === this.enemy.x && this.hero.y === this.enemy.y) {
+    if (
+      this.enemyAlive() &&
+      this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) <= 1 &&
+      this.hasLineOfSight(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y)
+    ) {
       if (!this.inBattleEncounter) {
         this.inBattleEncounter = true;
         this.battleJustStarted = true;
+        this.showCombatText(`Encounter! ${this.enemyLabelFor(this.enemy.kind)} spotted you.`);
       }
     }
 
     if (this.inBattleEncounter && this.enemyAlive()) {
       if (this.battleJustStarted) {
         this.battleJustStarted = false;
-      } else
-      if (this.invulnTurns === 0) {
+      } else if (this.invulnTurns === 0) {
         const hitRoll = Math.random();
-        const didHit = hitRoll < 0.8; // 80% accuracy
-    
+        const didHit = hitRoll < 0.8;
+
         if (didHit) {
           const dmg = this.enemy.kind === "bigSlime" ? 2 : 1;
           this.hero.hp = Math.max(0, this.hero.hp - dmg);
@@ -649,7 +656,7 @@ export default class DungeonScene extends Phaser.Scene {
         this.showCombatText(`Heal is on cooldown`);
       }
     }
-  
+
     if (action === "HIDE") {
       this.hiddenTurns = 2;
       this.showCombatText(`You hide in the shadows`);
@@ -680,23 +687,23 @@ export default class DungeonScene extends Phaser.Scene {
 
   private attackEnemyIfAdjacent() {
     if (!this.enemyAlive()) return;
-  
+
     const distance = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
     const canAttack = distance <= 1;
     if (!canAttack) return;
-  
+
     const hitRoll = Math.random();
     const didHit = hitRoll < 0.85;
-  
+
     if (!didHit) {
       this.showCombatText(`You missed ${this.enemyLabelFor(this.enemy.kind)}!`);
       return;
     }
-  
+
     const dmg = 1;
     this.enemy.hp -= dmg;
     this.showCombatText(`You hit ${this.enemyLabelFor(this.enemy.kind)} for ${dmg}`);
-  
+
     if (this.enemy.hp <= 0) {
       this.killEnemy();
       this.inBattleEncounter = false;
@@ -888,8 +895,6 @@ export default class DungeonScene extends Phaser.Scene {
   private render() {
     this.graphics.clear();
 
-    
-
     const tile = this.getTileSize();
     const { ox, oy } = this.getGridOrigin(tile);
 
@@ -933,8 +938,6 @@ export default class DungeonScene extends Phaser.Scene {
     this.heroSprite.setVisible(true);
     this.heroSprite.setPosition(heroPos.px, heroPos.py);
     this.heroSprite.setDisplaySize(tile * 0.8, tile * 0.8);
-
-    
 
     if (this.enemyAlive()) {
       const enemyPos = centerOf(this.enemy.x, this.enemy.y);
@@ -993,18 +996,6 @@ export default class DungeonScene extends Phaser.Scene {
 
     this.text.setPosition(ox + 8, oy + 8);
     this.combatText.setPosition(ox + tile * 6, oy + 8);
-
-    // const st = useGameStore.getState();
-    // const enemyInfo = this.enemyAlive()
-    //   ? `${this.enemyLabelFor(this.enemy.kind)} ${this.enemy.hp}/${this.enemy.maxHp}`
-    //   : "none";
-
-    // this.text.setText([
-    //   `Hero HP: ${this.hero.hp.toFixed(2)}`,
-    //   `Enemy: ${enemyInfo}`,
-    //   `Conf: ${st.prediction?.confidence.toFixed(2) ?? "0.00"}`,
-    //   "Keys: WASD move, Space attack, H heal, E hide, F fight, R run",
-    // ]);
   }
 
   private placeEnemyOnGrid(g: Tile[][], x: number, y: number, kind: EnemyKind) {
@@ -1079,8 +1070,10 @@ export default class DungeonScene extends Phaser.Scene {
           ];
 
     for (const option of options) {
-      if ((option.dx !== 0 || option.dy !== 0) &&
-          tryMove(this.enemy.x + option.dx, this.enemy.y + option.dy)) {
+      if (
+        (option.dx !== 0 || option.dy !== 0) &&
+        tryMove(this.enemy.x + option.dx, this.enemy.y + option.dy)
+      ) {
         break;
       }
     }
@@ -1108,6 +1101,49 @@ export default class DungeonScene extends Phaser.Scene {
   private isWalkable(x: number, y: number) {
     if (x < 0 || x >= W || y < 0 || y >= H) return false;
     return this.grid[y][x] !== 1;
+  }
+
+  private hasLineOfSight(x1: number, y1: number, x2: number, y2: number) {
+    let x = x1;
+    let y = y1;
+
+    const dx = Math.abs(x2 - x1);
+    const dy = Math.abs(y2 - y1);
+
+    const sx = x1 < x2 ? 1 : -1;
+    const sy = y1 < y2 ? 1 : -1;
+
+    let err = dx - dy;
+
+    while (!(x === x2 && y === y2)) {
+      if (!(x === x1 && y === y1) && !(x === x2 && y === y2)) {
+        if (x < 0 || x >= W || y < 0 || y >= H) return false;
+        if (this.grid[y][x] === 1) return false;
+      }
+
+      const e2 = err * 2;
+
+      if (e2 > -dy) {
+        err -= dy;
+        x += sx;
+      }
+
+      if (e2 < dx) {
+        err += dx;
+        y += sy;
+      }
+    }
+
+    return true;
+  }
+
+  private canEnemySeeHero(range = 5) {
+    if (!this.enemyAlive()) return false;
+
+    const dist = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
+    if (dist > range) return false;
+
+    return this.hasLineOfSight(this.enemy.x, this.enemy.y, this.hero.x, this.hero.y);
   }
 
   private actionToDelta(a: Action) {
