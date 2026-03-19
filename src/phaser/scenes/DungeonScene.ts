@@ -211,9 +211,10 @@ export default class DungeonScene extends Phaser.Scene {
     }).setDepth(40).setVisible(false);
 
     this.healthBarSprite = this.add
-      .image(0, 0, "health5")
-      .setDepth(25)
-      .setOrigin(0.5, 0.5);
+    .image(this.scale.width - 20, 20, "health5")
+    .setOrigin(1.5, .3)
+    .setDepth(20)
+    .setScrollFactor(0);
 
     this.grid = this.makeTemplateDungeon();
     this.trainingRoundsCompleted = 0;
