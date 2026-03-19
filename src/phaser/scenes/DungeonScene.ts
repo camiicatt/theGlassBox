@@ -92,7 +92,7 @@ export default class DungeonScene extends Phaser.Scene {
       map: [
         "############",
         "#S.....#...#",
-        "#.###..#.#.#",
+        "#...#..#.#.#",
         "#...#..#.#.#",
         "###.#..#.#.#",
         "#...#....#.#",
@@ -377,22 +377,31 @@ export default class DungeonScene extends Phaser.Scene {
   }
 
   private rememberHeroPosition() {
-    this.recentHeroPositions.push({ x: this.hero.x, y: this.hero.y });
-    if (this.recentHeroPositions.length > 6) {
+    const last = this.recentHeroPositions[this.recentHeroPositions.length - 1];
+    if (!last || last.x !== this.hero.x || last.y !== this.hero.y) {
+      this.recentHeroPositions.push({ x: this.hero.x, y: this.hero.y });
+    }
+  
+    if (this.recentHeroPositions.length > 8) {
       this.recentHeroPositions.shift();
     }
   }
 
   private isPositionLooping() {
     if (this.recentHeroPositions.length < 4) return false;
-
+  
     const n = this.recentHeroPositions.length;
     const a = this.recentHeroPositions[n - 1];
     const b = this.recentHeroPositions[n - 2];
     const c = this.recentHeroPositions[n - 3];
     const d = this.recentHeroPositions[n - 4];
-
-    return a.x === c.x && a.y === c.y && b.x === d.x && b.y === d.y;
+  
+    const twoStepLoop = a.x === c.x && a.y === c.y && b.x === d.x && b.y === d.y;
+  
+    const repeatedVisits =
+      this.recentHeroPositions.filter((p) => p.x === a.x && p.y === a.y).length >= 3;
+  
+    return twoStepLoop || repeatedVisits;
   }
 
   private enemiesForTrainingRound(round: number) {
@@ -603,19 +612,19 @@ export default class DungeonScene extends Phaser.Scene {
       action === "UP" || action === "DOWN" || action === "LEFT" || action === "RIGHT";
     const isBattleAction =
       action === "FIGHT" || action === "RUN" || action === "HIDE" || action === "HEAL";
-
+  
     if (recordExample && st.currentState) {
       st.addExample({ state: st.currentState.slice(), action });
       st.saveToLocal?.();
     }
-
+  
     if (this.inBattleEncounter && isMoveAction) {
       this.showCombatText("You are in battle. Use the battle popup.");
       this.syncBattlePrompt();
       this.render();
       return;
     }
-
+  
     if (!this.inBattleEncounter && isBattleAction && !this.enemyAlive()) {
       if (action === "HEAL" || action === "HIDE") {
         // allowed outside battle
@@ -625,23 +634,22 @@ export default class DungeonScene extends Phaser.Scene {
         return;
       }
     }
-
+  
     this.applyGeneralAction(action);
-
+  
     if (action === "FIGHT") {
-      this.fightIfAdjacent();
+      this.attackEnemyIfAdjacent();
     } else if (action === "RUN") {
       this.runAway();
-    } else if (action === "ATTACK") {
-      this.attackEnemyIfAdjacent();
     } else if (isMoveAction) {
       const { dx, dy } = this.actionToDelta(action);
       const nx = this.hero.x + dx;
       const ny = this.hero.y + dy;
+  
       if (this.isWalkable(nx, ny)) {
         this.hero.x = nx;
         this.hero.y = ny;
-
+  
         if (
           this.enemyAlive() &&
           this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) <= 1 &&
@@ -653,7 +661,7 @@ export default class DungeonScene extends Phaser.Scene {
         }
       }
     }
-
+  
     this.endOfTurn();
     this.syncBattlePrompt();
   }
@@ -904,155 +912,189 @@ export default class DungeonScene extends Phaser.Scene {
       this.showCombatText("You ran away!");
       return;
     }
-
-    const dx = Math.sign(this.hero.x - this.enemy.x);
-    const dy = Math.sign(this.hero.y - this.enemy.y);
-
-    const options =
-      dx === 0 && dy === 0
-        ? [
-            { dx: 1, dy: 0 },
-            { dx: -1, dy: 0 },
-            { dx: 0, dy: 1 },
-            { dx: 0, dy: -1 },
-          ]
-        : [
-            { dx, dy: 0 },
-            { dx: 0, dy },
-            { dx: -dx, dy: 0 },
-            { dx: 0, dy: -dy },
-          ];
-
-    Phaser.Utils.Array.Shuffle(options);
-
-    for (const o of options) {
-      const nx = this.hero.x + o.dx;
-      const ny = this.hero.y + o.dy;
-      if (this.isWalkable(nx, ny) && !(nx === this.enemy.x && ny === this.enemy.y)) {
-        this.hero.x = nx;
-        this.hero.y = ny;
-        this.inBattleEncounter = false;
-        this.battleJustStarted = false;
-        this.showCombatText("You ran away!");
-        return;
-      }
+  
+    const candidates = [
+      { action: "UP" as Action, ...this.actionToDelta("UP") },
+      { action: "DOWN" as Action, ...this.actionToDelta("DOWN") },
+      { action: "LEFT" as Action, ...this.actionToDelta("LEFT") },
+      { action: "RIGHT" as Action, ...this.actionToDelta("RIGHT") },
+    ]
+      .map((m) => {
+        const nx = this.hero.x + m.dx;
+        const ny = this.hero.y + m.dy;
+        const dist = this.manhattan(nx, ny, this.enemy.x, this.enemy.y);
+        return { ...m, nx, ny, dist };
+      })
+      .filter(
+        (m) =>
+          this.isWalkable(m.nx, m.ny) &&
+          !(m.nx === this.enemy.x && m.ny === this.enemy.y)
+      )
+      .sort((a, b) => b.dist - a.dist);
+  
+    if (candidates.length > 0) {
+      this.hero.x = candidates[0].nx;
+      this.hero.y = candidates[0].ny;
+      this.inBattleEncounter = false;
+      this.battleJustStarted = false;
+      this.showCombatText("You ran away!");
+      return;
     }
-
+  
     this.showCombatText("No path to run!");
   }
 
   private chooseLegalAction(probs: Record<string, number>, confidence = 0): Action {
-    const adjusted = {} as Record<Action, number>;
+  const adjusted = {} as Record<Action, number>;
 
-    for (const a of ACTIONS) {
-      adjusted[a] = probs[a] ?? 0;
-    }
-
-    const adjacent =
-      this.enemyAlive() &&
-      this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) <= 1;
-
-    if (this.lastAiAction) {
-      const reverse = this.reverseOf(this.lastAiAction);
-      if (reverse) adjusted[reverse] *= 0.35;
-    }
-
-    if (this.isPositionLooping()) {
-      for (const a of ["UP", "DOWN", "LEFT", "RIGHT"] as Action[]) {
-        adjusted[a] *= 0.7;
-      }
-
-      if (this.lastAiAction === "LEFT" || this.lastAiAction === "RIGHT") {
-        adjusted["UP"] *= 1.4;
-        adjusted["DOWN"] *= 1.4;
-      }
-
-      if (this.lastAiAction === "UP" || this.lastAiAction === "DOWN") {
-        adjusted["LEFT"] *= 1.4;
-        adjusted["RIGHT"] *= 1.4;
-      }
-    }
-
-    const legal: { action: Action; score: number }[] = [];
-
-    for (const action of ACTIONS) {
-      if ((action === "ATTACK" || action === "FIGHT") && !adjacent) continue;
-
-      if (action === "HEAL") {
-        if (this.healCooldown > 0) continue;
-        if (this.hero.hp >= HERO_MAX_HP) continue;
-        legal.push({ action, score: adjusted[action] });
-        continue;
-      }
-
-      if (action === "HIDE") {
-        if (this.hiddenTurns > 0) continue;
-        legal.push({ action, score: adjusted[action] });
-        continue;
-      }
-
-      if (action === "RUN") {
-        if (!this.enemyAlive()) continue;
-        legal.push({ action, score: adjusted[action] });
-        continue;
-      }
-
-      if (action === "UP" || action === "DOWN" || action === "LEFT" || action === "RIGHT") {
-        if (this.inBattleEncounter) continue;
-        const { dx, dy } = this.actionToDelta(action);
-        const nx = this.hero.x + dx;
-        const ny = this.hero.y + dy;
-        if (!this.isWalkable(nx, ny)) continue;
-        legal.push({ action, score: adjusted[action] });
-        continue;
-      }
-
-      if (action === "WAIT") {
-        legal.push({ action, score: adjusted[action] });
-      }
-    }
-
-    if (legal.length === 0) return "WAIT";
-
-    const shouldExplore = confidence < 0.55 || this.isPositionLooping();
-
-    if (shouldExplore && Math.random() < 0.3) {
-      const movementOnly = legal.filter(
-  (x) =>
-    (x.action === "UP" ||
-      x.action === "DOWN" ||
-      x.action === "LEFT" ||
-      x.action === "RIGHT") &&
-    x.score > 0
-);
-
-const pool = movementOnly.length > 0 ? movementOnly : legal.filter((x) => x.score > 0);
-
-if (pool.length === 0) return "WAIT";
-
-      const positivePool = pool.filter((item) => item.score > 0);
-
-      if (positivePool.length === 0) {
-        return "WAIT";
-      }
-      
-      let total = 0;
-      for (const item of positivePool) {
-        total += item.score;
-      }
-      
-      let r = Math.random() * total;
-      for (const item of positivePool) {
-        r -= item.score;
-        if (r <= 0) return item.action;
-      }
-      
-      return positivePool[positivePool.length - 1].action;
-    }
-
-    legal.sort((a, b) => b.score - a.score);
-    return legal[0].action;
+  for (const a of ACTIONS) {
+    adjusted[a] = probs[a] ?? 0;
   }
+
+  const adjacent =
+    this.enemyAlive() &&
+    this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y) <= 1;
+
+  const moveActions: Action[] = ["UP", "DOWN", "LEFT", "RIGHT"];
+
+  const legalMoves = moveActions.filter((action) => {
+    const { dx, dy } = this.actionToDelta(action);
+    const nx = this.hero.x + dx;
+    const ny = this.hero.y + dy;
+    return this.isWalkable(nx, ny);
+  });
+
+  if (this.lastAiAction) {
+    const reverse = this.reverseOf(this.lastAiAction);
+    if (reverse) adjusted[reverse] *= 0.15;
+  }
+
+  if (this.isPositionLooping()) {
+    for (const a of moveActions) {
+      adjusted[a] *= 0.12;
+    }
+
+    if (this.lastAiAction && moveActions.includes(this.lastAiAction)) {
+      adjusted[this.lastAiAction] *= 0.35;
+    }
+  }
+
+  if (this.enemyAlive()) {
+    const dist = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
+
+    if (adjacent) {
+      adjusted["FIGHT"] = Math.max(adjusted["FIGHT"], 1.4);
+      adjusted["RUN"] *= 0.75;
+    } else if (dist <= 3 && !this.inBattleEncounter) {
+      adjusted["RUN"] = Math.max(adjusted["RUN"], adjusted["RUN"] * 1.1);
+    }
+  }
+
+  if (this.hero.hp <= 2 && this.healCooldown <= 0) {
+    adjusted["HEAL"] = Math.max(adjusted["HEAL"], 0.9);
+  }
+
+  const legal: { action: Action; score: number }[] = [];
+
+  for (const action of ACTIONS) {
+    if (action === "FIGHT" && !adjacent) continue;
+
+    if (action === "HEAL") {
+      if (this.healCooldown > 0) continue;
+      if (this.hero.hp >= HERO_MAX_HP) continue;
+      legal.push({ action, score: adjusted[action] });
+      continue;
+    }
+
+    if (action === "HIDE") {
+      if (this.hiddenTurns > 0) continue;
+      legal.push({ action, score: adjusted[action] });
+      continue;
+    }
+
+    if (action === "RUN") {
+      if (!this.enemyAlive()) continue;
+      legal.push({ action, score: adjusted[action] });
+      continue;
+    }
+
+    if (action === "UP" || action === "DOWN" || action === "LEFT" || action === "RIGHT") {
+      if (this.inBattleEncounter) continue;
+
+      const { dx, dy } = this.actionToDelta(action);
+      const nx = this.hero.x + dx;
+      const ny = this.hero.y + dy;
+
+      if (!this.isWalkable(nx, ny)) continue;
+
+      let score = adjusted[action];
+
+      if (this.enemyAlive()) {
+        const currentDist = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
+        const nextDist = this.manhattan(nx, ny, this.enemy.x, this.enemy.y);
+
+        if (currentDist <= 3) {
+          if (nextDist < currentDist) score *= 0.55;
+          if (nextDist > currentDist) score *= 1.15;
+        }
+      }
+
+      if (this.recentHeroPositions.some((p) => p.x === nx && p.y === ny)) {
+        score *= 0.2;
+      }
+
+      if (this.lastAiAction === action) {
+        score *= 0.65;
+      }
+
+      legal.push({ action, score });
+      continue;
+    }
+
+    if (action === "WAIT") {
+      let score = adjusted[action] ?? 0;
+      if (legalMoves.length > 0) score *= 0.15;
+      legal.push({ action, score });
+    }
+  }
+
+  if (legal.length === 0) {
+    if (adjacent) return "FIGHT";
+    return "WAIT";
+  }
+
+  const positive = legal.filter((x) => x.score > 0);
+
+  if (positive.length === 0) {
+    if (adjacent) return "FIGHT";
+
+    const movementFallback = legal.filter(
+      (x) =>
+        x.action === "UP" ||
+        x.action === "DOWN" ||
+        x.action === "LEFT" ||
+        x.action === "RIGHT"
+    );
+
+    if (movementFallback.length > 0) {
+      movementFallback.sort((a, b) => Math.random() - 0.5);
+      return movementFallback[0].action;
+    }
+
+    return "WAIT";
+  }
+
+  positive.sort((a, b) => b.score - a.score);
+
+  if (adjacent && positive.some((x) => x.action === "FIGHT")) {
+    const fightOption = positive.find((x) => x.action === "FIGHT");
+    if (fightOption && fightOption.score >= positive[0].score * 0.7) {
+      return "FIGHT";
+    }
+  }
+
+  return positive[0].action;
+}
 
   private killEnemy() {
     if (this.enemy.x >= 0 && this.enemy.y >= 0) {
