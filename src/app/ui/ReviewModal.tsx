@@ -1,5 +1,5 @@
-import { useGameStore } from "./store/useGameStore";
-import type { Action } from "./store/useGameStore";
+import { useGameStore } from "../store/useGameStore";
+import type { Action } from "../store/useGameStore";
 
 const SURVIVAL_ACTIONS: Action[] = ["HEAL", "HIDE", "RUN", "FIGHT"];
 const ADVANCED_ACTIONS: Action[] = ["UP", "DOWN", "LEFT", "RIGHT", "ATTACK", "WAIT"];

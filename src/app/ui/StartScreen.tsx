@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useGameStore } from "./store/useGameStore"; 
+import { useGameStore } from "../store/useGameStore"; 
 
 function makeStudentId(first: string, lastInitial: string) {
   const f = first.trim().toLowerCase().replace(/[^a-z]/g, "");

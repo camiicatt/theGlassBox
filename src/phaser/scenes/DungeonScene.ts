@@ -1,14 +1,18 @@
 import Phaser from "phaser";
 import { encodeNeighborhood, type Tile } from "../../game/stateEncoding";
 import { knnPredict } from "../../ai/knn";
-import { useGameStore } from "../../app/ui/store/useGameStore";
-import type { Action } from "../../app/ui/store/useGameStore";
+import { useGameStore } from "../../app/store/useGameStore";
+import type { Action } from "../../app/store/useGameStore";
 import { ACTIONS } from "../../game/actions";
 
 const W = 12;
 const H = 12;
 const HERO_MAX_HP = 5;
-const DUNGEONS_BEFORE_AI_RUN = 5;
+
+const TRAINING_ROUNDS_BEFORE_AI_RUN = 5;
+
+const HEAL_AMOUNT = 2;
+const HEAL_COOLDOWN_TURNS = 2;
 
 function uid() {
   return Math.random().toString(16).slice(2);
@@ -22,6 +26,8 @@ type Enemy = {
   hp: number;
   maxHp: number;
   kind: EnemyKind;
+  damage: number;
+  hitChance: number;
 };
 
 type DungeonTemplate = {
@@ -33,38 +39,52 @@ export default class DungeonScene extends Phaser.Scene {
   private grid!: Tile[][];
   private hero = { x: 1, y: 1, hp: HERO_MAX_HP };
 
-  private enemy: Enemy = { x: 8, y: 8, hp: 2, maxHp: 2, kind: "slime" };
+  private enemy: Enemy = {
+    x: 8,
+    y: 8,
+    hp: 2,
+    maxHp: 2,
+    kind: "slime",
+    damage: 1,
+    hitChance: 0.65,
+  };
+
   private goal = { x: 10, y: 10 };
 
   private graphics!: Phaser.GameObjects.Graphics;
   private text!: Phaser.GameObjects.Text;
-
-  private lastStepAt = 0;
-  private enemySkipTurns = 0;
-
-  private healCooldown = 0;
-  private hiddenTurns = 0;
-
-  private autoHeroWalk = false;
-  private heroAutoStepAt = 0;
-  private heroWanderCooldownMs = 450;
-
-  private invulnTurns = 0;
-  private lastRestartToken = 0;
-  private inBattleEncounter = false;
-  private battleJustStarted = false;
-  private trainingDungeonClears = 0;
+  private combatText!: Phaser.GameObjects.Text;
+  private healthBarSprite!: Phaser.GameObjects.Image;
 
   private heroSprite!: Phaser.GameObjects.Image;
   private enemySprite!: Phaser.GameObjects.Image;
 
+  private lastStepAt = 0;
+  private enemySkipTurns = 0;
+  private healCooldown = 0;
+  private hiddenTurns = 0;
+  private autoHeroWalk = false;
+  private heroAutoStepAt = 0;
+  private heroWanderCooldownMs = 450;
+  private invulnTurns = 0;
+  private lastRestartToken = 0;
+  private inBattleEncounter = false;
+  private battleJustStarted = false;
+  private trainingRoundsCompleted = 0;
+  private combatMessage = "";
+
+  private enemiesRemainingThisRound = 1;
+
   private lastAiAction: Action | null = null;
   private recentHeroPositions: { x: number; y: number }[] = [];
 
-  private combatText!: Phaser.GameObjects.Text;
-  private combatMessage = "";
-
-  private healthBarSprite!: Phaser.GameObjects.Image;
+  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
+  private wasdKeys!: {
+    W: Phaser.Input.Keyboard.Key;
+    A: Phaser.Input.Keyboard.Key;
+    S: Phaser.Input.Keyboard.Key;
+    D: Phaser.Input.Keyboard.Key;
+  };
 
   private dungeonTemplates: DungeonTemplate[] = [
     {
@@ -79,8 +99,8 @@ export default class DungeonScene extends Phaser.Scene {
         "#.######.#.#",
         "#......#.#.#",
         "#.####.#.#.#",
-        "#.#..#.#...#",
-        "#.#..###.EG#",
+        "#.####.#...#",
+        "#.######.EG#",
         "############",
       ],
     },
@@ -143,8 +163,8 @@ export default class DungeonScene extends Phaser.Scene {
         "#.########.#",
         "#.#......#.#",
         "#.#.####.#.#",
-        "#.#.#..#.#.#",
-        "#...#..#...#",
+        "#.#.####.#.#",
+        "#...####...#",
         "###.####.###",
         "#...#....#.#",
         "#.###.##.#.#",
@@ -177,7 +197,7 @@ export default class DungeonScene extends Phaser.Scene {
 
     this.text = this.add.text(10, 10, "", {
       fontFamily: "monospace",
-      fontSize: "14px",
+      fontSize: "18px",
       color: "#ffffff",
     }).setDepth(30);
 
@@ -187,44 +207,31 @@ export default class DungeonScene extends Phaser.Scene {
       color: "#f8fafc",
       backgroundColor: "#7f1d1d",
       padding: { left: 8, right: 8, top: 4, bottom: 4 },
+      wordWrap: { width: 360 },
     }).setDepth(40).setVisible(false);
 
-    this.healthBarSprite = this.add.image(0, 0, "health5").setDepth(25).setOrigin(1.5, 0.35);
-
-    this.game.canvas.setAttribute("tabindex", "0");
-    this.game.canvas.focus();
-    this.input.on("pointerdown", () => this.game.canvas.focus());
+    this.healthBarSprite = this.add
+      .image(0, 0, "health5")
+      .setDepth(25)
+      .setOrigin(0.5, 0.5);
 
     this.grid = this.makeTemplateDungeon();
-    this.trainingDungeonClears = 0;
+    this.trainingRoundsCompleted = 0;
     this.resetAiMemory();
     useGameStore.getState().setBattleLog("");
 
     this.heroSprite = this.add.image(0, 0, "hero").setDepth(20).setOrigin(0.5);
     this.enemySprite = this.add.image(0, 0, "slime").setDepth(20).setOrigin(0.5);
 
-    this.input.keyboard?.on("keydown-ESC", () => {
-      const st = useGameStore.getState();
-      if (st.mode === "AI_RUN") st.setMode("TRAINING");
-    });
+    this.setupControls();
 
-    this.input.keyboard?.on("keydown", (e: KeyboardEvent) => {
-      const st = useGameStore.getState();
-      const action = this.keyToAction(e.key);
-      if (!action) return;
-
-      if (action === "HEAL" || action === "HIDE") {
-        this.step(action, st.mode === "TRAINING");
-        return;
-      }
-
-      if (st.mode !== "TRAINING") return;
-
-      this.step(action, true);
+    this.scale.on("resize", () => {
+      this.render();
     });
 
     this.publishStateAndPrediction();
     this.rememberHeroPosition();
+    this.syncBattlePrompt();
     this.render();
   }
 
@@ -244,31 +251,22 @@ export default class DungeonScene extends Phaser.Scene {
       this.enemySkipTurns = 2;
       this.inBattleEncounter = false;
       this.battleJustStarted = false;
+      this.trainingRoundsCompleted = 0;
       st.setBattleLog("");
 
       this.resetAiMemory();
-
       st.setHeroDead(false);
 
       this.publishStateAndPrediction();
       this.rememberHeroPosition();
+      this.syncBattlePrompt();
       this.render();
       return;
     }
 
     if (choice) {
       st.setPendingAction(null);
-
-      if (st.mode === "TRAINING" && st.currentState) {
-        st.addExample({ state: st.currentState.slice(), action: choice });
-        st.saveToLocal?.();
-      }
-
-      this.applyGeneralAction(choice);
-      this.applyBattleChoice(choice);
-
-      this.endOfTurn();
-      this.syncBattlePrompt();
+      this.step(choice, true);
       return;
     }
 
@@ -296,6 +294,54 @@ export default class DungeonScene extends Phaser.Scene {
     }
   }
 
+  private setupControls() {
+    this.cursors = this.input.keyboard!.createCursorKeys();
+
+    this.wasdKeys = this.input.keyboard!.addKeys({
+      W: Phaser.Input.Keyboard.KeyCodes.W,
+      A: Phaser.Input.Keyboard.KeyCodes.A,
+      S: Phaser.Input.Keyboard.KeyCodes.S,
+      D: Phaser.Input.Keyboard.KeyCodes.D,
+    }) as {
+      W: Phaser.Input.Keyboard.Key;
+      A: Phaser.Input.Keyboard.Key;
+      S: Phaser.Input.Keyboard.Key;
+      D: Phaser.Input.Keyboard.Key;
+    };
+
+    this.input.keyboard!.on("keydown", (event: KeyboardEvent) => {
+      const st = useGameStore.getState();
+      if (st.mode !== "TRAINING") return;
+      if (st.heroDead) return;
+
+      const key = event.key.toLowerCase();
+
+      if (key === "arrowup" || key === "w") {
+        this.tryManualAction("UP");
+      } else if (key === "arrowdown" || key === "s") {
+        this.tryManualAction("DOWN");
+      } else if (key === "arrowleft" || key === "a") {
+        this.tryManualAction("LEFT");
+      } else if (key === "arrowright" || key === "d") {
+        this.tryManualAction("RIGHT");
+      }
+    });
+  }
+
+  private tryManualAction(action: Action) {
+    const st = useGameStore.getState();
+    if (st.mode !== "TRAINING") return;
+
+    if (this.inBattleEncounter) {
+      this.showCombatText("Use the battle popup while in combat.");
+      this.syncBattlePrompt();
+      this.render();
+      return;
+    }
+
+    this.step(action, true);
+  }
+
   private healthTextureFor(hp: number) {
     const clamped = Phaser.Math.Clamp(hp / HERO_MAX_HP, 0, 1);
     const level = Math.round(clamped * 5);
@@ -312,12 +358,6 @@ export default class DungeonScene extends Phaser.Scene {
     useGameStore.getState().setBattleLog(message);
     this.combatText.setText(message);
     this.combatText.setVisible(true);
-  }
-
-  private clearCombatText() {
-    this.combatMessage = "";
-    this.combatText.setText("");
-    this.combatText.setVisible(false);
   }
 
   private reverseOf(action: Action): Action | null {
@@ -352,6 +392,24 @@ export default class DungeonScene extends Phaser.Scene {
     const d = this.recentHeroPositions[n - 4];
 
     return a.x === c.x && a.y === c.y && b.x === d.x && b.y === d.y;
+  }
+
+  private enemiesForTrainingRound(round: number) {
+    if (round <= 2) return 3;
+    if (round <= 4) return 2;
+    return 1;
+  }
+
+  private enemyPlanForTrainingRound(round: number) {
+    if (round <= 2) {
+      return { kind: "slime" as EnemyKind, hp: 2, damage: 1, hitChance: 0.55 };
+    }
+    if (round <= 4) {
+      return round === 3
+        ? { kind: "slime" as EnemyKind, hp: 2, damage: 1, hitChance: 0.6 }
+        : { kind: "spider" as EnemyKind, hp: 2, damage: 1, hitChance: 0.62 };
+    }
+    return { kind: "bigSlime" as EnemyKind, hp: 4, damage: 1, hitChance: 0.65 };
   }
 
   private makeDungeonFromTemplate(template: DungeonTemplate): Tile[][] {
@@ -394,7 +452,18 @@ export default class DungeonScene extends Phaser.Scene {
     this.hero.y = heroSpawn.y;
     this.goal = goalSpawn;
 
-    this.placeEnemyOnGrid(g, enemySpawn.x, enemySpawn.y, template.enemyKind);
+    const st = useGameStore.getState();
+    const round = this.trainingRoundsCompleted + 1;
+
+    if (st.mode === "TRAINING") {
+      this.enemiesRemainingThisRound = this.enemiesForTrainingRound(round);
+      const plan = this.enemyPlanForTrainingRound(round);
+      this.placeEnemyOnGrid(g, enemySpawn.x, enemySpawn.y, plan.kind, plan.hp, plan.damage, plan.hitChance);
+    } else {
+      const stats = this.enemyStatsFor(template.enemyKind);
+      this.enemiesRemainingThisRound = 1;
+      this.placeEnemyOnGrid(g, enemySpawn.x, enemySpawn.y, template.enemyKind, stats.maxHp, stats.damage, stats.hitChance);
+    }
 
     this.enemySkipTurns = 0;
     this.healCooldown = 0;
@@ -409,6 +478,29 @@ export default class DungeonScene extends Phaser.Scene {
   private makeTemplateDungeon(): Tile[][] {
     const template = Phaser.Utils.Array.GetRandom(this.dungeonTemplates);
     return this.makeDungeonFromTemplate(template);
+  }
+
+  private spawnNextEnemyForCurrentRound() {
+    const round = this.trainingRoundsCompleted + 1;
+    const plan = this.enemyPlanForTrainingRound(round);
+
+    const candidates: { x: number; y: number }[] = [];
+    for (let y = 1; y < H - 1; y++) {
+      for (let x = 1; x < W - 1; x++) {
+        if (!this.isWalkable(x, y)) continue;
+        if (x === this.hero.x && y === this.hero.y) continue;
+        if (x === this.goal.x && y === this.goal.y) continue;
+        if (this.manhattan(x, y, this.hero.x, this.hero.y) < 4) continue;
+        candidates.push({ x, y });
+      }
+    }
+
+    if (candidates.length === 0) return;
+
+    const spawn = Phaser.Utils.Array.GetRandom(candidates);
+    this.placeEnemyOnGrid(this.grid, spawn.x, spawn.y, plan.kind, plan.hp, plan.damage, plan.hitChance);
+    this.enemySkipTurns = 1;
+    this.showCombatText(`${this.enemyLabelFor(plan.kind)} appears! ${this.enemiesRemainingThisRound} enemies left this round.`);
   }
 
   private enemyTextureFor(kind: EnemyKind) {
@@ -438,36 +530,53 @@ export default class DungeonScene extends Phaser.Scene {
   private enemyStatsFor(kind: EnemyKind) {
     switch (kind) {
       case "bigSlime":
-        return { maxHp: 4 };
+        return { maxHp: 4, damage: 1, hitChance: 0.65 };
       case "spider":
-        return { maxHp: 3 };
+        return { maxHp: 3, damage: 1, hitChance: 0.72 };
       case "slime":
       default:
-        return { maxHp: 2 };
+        return { maxHp: 2, damage: 1, hitChance: 0.7 };
     }
   }
 
-  private syncBattlePrompt() {
+  private syncBattlePrompt(
+    extras?: {
+      lastAction?: "FIGHT" | "HIDE" | "HEAL" | "RUN" | null;
+      heroHit?: boolean;
+      enemyHit?: boolean;
+      heroDead?: boolean;
+      enemyDead?: boolean;
+      keepOpen?: boolean;
+    }
+  ) {
     const st = useGameStore.getState();
 
-    if (st.mode !== "TRAINING") {
-      if (st.battlePrompt) st.closeBattlePrompt?.();
-      st.setBattleLog("");
-      return;
-    }
+    const shouldStayOpen =
+      (this.inBattleEncounter && this.enemyAlive()) || extras?.keepOpen;
 
-    const shouldShow = this.inBattleEncounter && this.enemyAlive();
-
-    if (shouldShow) {
+    if (shouldStayOpen) {
       st.openBattlePrompt({
         enemyName: this.enemyLabelFor(this.enemy.kind),
-        enemyHp: this.enemy.hp,
+        enemyKind: this.enemy.kind,
+        enemySprite: this.enemyTextureFor(this.enemy.kind),
+        heroSprite: "hero",
+        enemyHp: Math.max(0, this.enemy.hp),
         enemyMaxHp: this.enemy.maxHp,
         heroHp: this.hero.hp,
         heroMaxHp: HERO_MAX_HP,
+        lastAction: extras?.lastAction ?? null,
+        heroHit: extras?.heroHit ?? false,
+        enemyHit: extras?.enemyHit ?? false,
+        heroDead: extras?.heroDead ?? false,
+        enemyDead: extras?.enemyDead ?? false,
       });
     } else {
-      if (st.battlePrompt) st.closeBattlePrompt?.();
+      st.closeBattlePrompt();
+    }
+
+    if (this.combatMessage) {
+      st.setBattleLog(this.combatMessage);
+    } else {
       st.setBattleLog("");
     }
   }
@@ -500,16 +609,20 @@ export default class DungeonScene extends Phaser.Scene {
     }
 
     if (this.inBattleEncounter && isMoveAction) {
-      this.showCombatText("You are in battle. Choose Fight, Run, Hide, or Heal.");
+      this.showCombatText("You are in battle. Use the battle popup.");
       this.syncBattlePrompt();
       this.render();
       return;
     }
 
     if (!this.inBattleEncounter && isBattleAction && !this.enemyAlive()) {
-      this.showCombatText("There is no enemy to battle.");
-      this.render();
-      return;
+      if (action === "HEAL" || action === "HIDE") {
+        // allowed outside battle
+      } else {
+        this.showCombatText("There is no enemy to battle.");
+        this.render();
+        return;
+      }
     }
 
     this.applyGeneralAction(action);
@@ -538,10 +651,6 @@ export default class DungeonScene extends Phaser.Scene {
           this.showCombatText(`Encounter! ${this.enemyLabelFor(this.enemy.kind)} blocks your path.`);
         }
       }
-    }
-
-    if (st.mode === "TRAINING" && this.enemyAlive()) {
-      this.syncBattlePrompt();
     }
 
     this.endOfTurn();
@@ -580,15 +689,25 @@ export default class DungeonScene extends Phaser.Scene {
       if (this.battleJustStarted) {
         this.battleJustStarted = false;
       } else if (this.invulnTurns === 0) {
-        const hitRoll = Math.random();
-        const didHit = hitRoll < 0.8;
+        const didHit = Math.random() < this.enemy.hitChance;
 
         if (didHit) {
-          const dmg = this.enemy.kind === "bigSlime" ? 2 : 1;
-          this.hero.hp = Math.max(0, this.hero.hp - dmg);
-          this.showCombatText(`${this.enemyLabelFor(this.enemy.kind)} hits for ${dmg} HP`);
+          this.hero.hp = Math.max(0, this.hero.hp - this.enemy.damage);
+          this.showCombatText(`${this.enemyLabelFor(this.enemy.kind)} hits for ${this.enemy.damage} HP`);
+          this.syncBattlePrompt({
+            lastAction: "FIGHT",
+            heroHit: true,
+            heroDead: this.hero.hp <= 0,
+            keepOpen: true,
+          });
         } else {
           this.showCombatText(`${this.enemyLabelFor(this.enemy.kind)} missed!`);
+          this.syncBattlePrompt({
+            lastAction: "FIGHT",
+            heroHit: false,
+            heroDead: false,
+            keepOpen: true,
+          });
         }
 
         this.invulnTurns = 2;
@@ -599,29 +718,45 @@ export default class DungeonScene extends Phaser.Scene {
 
     if (this.hero.x === this.goal.x && this.hero.y === this.goal.y) {
       if (st.mode === "TRAINING") {
-        this.trainingDungeonClears += 1;
-
-        if (this.trainingDungeonClears >= DUNGEONS_BEFORE_AI_RUN) {
-          st.setMode("AI_RUN");
-          st.setBattleLog("5 dungeons cleared. AI now takes control.");
-          this.showCombatText("5 dungeons cleared. AI now takes control.");
-          this.trainingDungeonClears = 0;
+        if (this.enemyAlive() || this.enemiesRemainingThisRound > 0) {
+          this.showCombatText(`You still need to defeat ${this.enemiesRemainingThisRound} enemy${this.enemiesRemainingThisRound === 1 ? "" : "ies"} this round.`);
         } else {
-          const remaining = DUNGEONS_BEFORE_AI_RUN - this.trainingDungeonClears;
-          this.showCombatText(`Dungeon cleared! ${remaining} to go before AI runs.`);
-        }
-      }
+          this.trainingRoundsCompleted += 1;
 
-      this.grid = this.makeTemplateDungeon();
-      this.resetAiMemory();
-      this.rememberHeroPosition();
+          if (this.trainingRoundsCompleted >= TRAINING_ROUNDS_BEFORE_AI_RUN) {
+            st.setMode("AI_RUN");
+            this.showCombatText("Training finished: 5 rounds completed. AI now takes control.");
+            this.trainingRoundsCompleted = 0;
+          } else {
+            const remaining = TRAINING_ROUNDS_BEFORE_AI_RUN - this.trainingRoundsCompleted;
+            this.showCombatText(`Round cleared! ${remaining} training rounds left.`);
+          }
+
+          this.grid = this.makeTemplateDungeon();
+          this.healCooldown = 0;
+          this.hiddenTurns = 0;
+          this.enemySkipTurns = 1;
+          this.inBattleEncounter = false;
+          this.battleJustStarted = false;
+          this.resetAiMemory();
+          this.rememberHeroPosition();
+        }
+      } else {
+        this.grid = this.makeTemplateDungeon();
+        this.healCooldown = 0;
+        this.hiddenTurns = 0;
+        this.enemySkipTurns = 1;
+        this.inBattleEncounter = false;
+        this.battleJustStarted = false;
+        this.resetAiMemory();
+        this.rememberHeroPosition();
+      }
     }
 
     if (this.hero.hp <= 0) {
       this.hero.hp = 0;
       this.inBattleEncounter = false;
       this.battleJustStarted = false;
-      if (st.battlePrompt) st.closeBattlePrompt?.();
       st.setBattleLog("");
 
       const moment = {
@@ -642,42 +777,56 @@ export default class DungeonScene extends Phaser.Scene {
 
     this.publishStateAndPrediction();
     this.rememberHeroPosition();
+    this.syncBattlePrompt();
     this.render();
   }
 
   private applyGeneralAction(action: Action) {
     if (action === "HEAL") {
-      if (this.healCooldown === 0) {
-        const amount = 1;
-        this.hero.hp = Math.min(HERO_MAX_HP, this.hero.hp + amount);
-        this.healCooldown = 3;
-        this.showCombatText(`You healed ${amount} HP`);
-      } else {
-        this.showCombatText(`Heal is on cooldown`);
+      if (this.healCooldown > 0) {
+        this.showCombatText("Heal is on cooldown");
+        return;
       }
+
+      if (this.hero.hp >= HERO_MAX_HP) {
+        this.showCombatText("You are already at full health");
+        return;
+      }
+
+      const amount = Math.min(HEAL_AMOUNT, HERO_MAX_HP - this.hero.hp);
+      this.hero.hp += amount;
+      this.healCooldown = HEAL_COOLDOWN_TURNS;
+      this.invulnTurns = Math.max(this.invulnTurns, 1);
+      this.showCombatText(`You healed ${amount} HP`);
     }
 
     if (action === "HIDE") {
-      this.hiddenTurns = 2;
-      this.showCombatText(`You hide in the shadows`);
+      this.hiddenTurns = Math.max(this.hiddenTurns, 3);
+      this.enemySkipTurns = Math.max(this.enemySkipTurns, 2);
+      this.invulnTurns = Math.max(this.invulnTurns, 1);
+      this.showCombatText("You hide in the shadows");
+
+      this.inBattleEncounter = false;
+      this.battleJustStarted = false;
+
+      this.syncBattlePrompt({ lastAction: "HIDE" });
     }
   }
 
-  private applyBattleChoice(choice: Action) {
-    switch (choice) {
-      case "FIGHT":
-        this.fightIfAdjacent();
-        break;
-      case "RUN":
-        this.runAway();
-        break;
-      case "HIDE":
-        this.hiddenTurns = Math.max(this.hiddenTurns, 2);
-        this.enemySkipTurns = 1;
-        break;
-      case "HEAL":
+  private trainingRoundLabel(round: number) {
+    switch (round) {
+      case 1:
+        return "Round 1: Basic Survival";
+      case 2:
+        return "Round 2: Danger Awareness";
+      case 3:
+        return "Round 3: Smart Retreat";
+      case 4:
+        return "Round 4: Resource Use";
+      case 5:
+        return "Round 5: Final Test";
       default:
-        break;
+        return `Round ${round}`;
     }
   }
 
@@ -689,27 +838,63 @@ export default class DungeonScene extends Phaser.Scene {
     if (!this.enemyAlive()) return;
 
     const distance = this.manhattan(this.hero.x, this.hero.y, this.enemy.x, this.enemy.y);
-    const canAttack = distance <= 1;
-    if (!canAttack) return;
+    if (distance > 1) {
+      this.showCombatText("You are too far away to fight.");
+      this.syncBattlePrompt({ lastAction: "FIGHT", keepOpen: true });
+      return;
+    }
 
-    const hitRoll = Math.random();
-    const didHit = hitRoll < 0.85;
+    const didHit = Math.random() < 0.85;
 
     if (!didHit) {
       this.showCombatText(`You missed ${this.enemyLabelFor(this.enemy.kind)}!`);
+      this.syncBattlePrompt({
+        lastAction: "FIGHT",
+        enemyHit: false,
+        enemyDead: false,
+        keepOpen: true,
+      });
       return;
     }
 
     const dmg = 1;
     this.enemy.hp -= dmg;
-    this.showCombatText(`You hit ${this.enemyLabelFor(this.enemy.kind)} for ${dmg}`);
 
     if (this.enemy.hp <= 0) {
-      this.killEnemy();
-      this.inBattleEncounter = false;
-      this.battleJustStarted = false;
+      this.enemy.hp = 0;
+      this.enemiesRemainingThisRound = Math.max(0, this.enemiesRemainingThisRound - 1);
       this.showCombatText(`You defeated ${this.enemyLabelFor(this.enemy.kind)}!`);
+
+      this.syncBattlePrompt({
+        lastAction: "FIGHT",
+        enemyHit: true,
+        enemyDead: true,
+        keepOpen: true,
+      });
+
+      this.time.delayedCall(650, () => {
+        this.killEnemy();
+        this.inBattleEncounter = false;
+        this.battleJustStarted = false;
+
+        if (useGameStore.getState().mode === "TRAINING" && this.enemiesRemainingThisRound > 0) {
+          this.spawnNextEnemyForCurrentRound();
+        }
+
+        this.syncBattlePrompt();
+        this.render();
+      });
+
+      return;
     }
+
+    this.showCombatText(`You hit ${this.enemyLabelFor(this.enemy.kind)} for ${dmg}`);
+    this.syncBattlePrompt({
+      lastAction: "FIGHT",
+      enemyHit: true,
+      enemyDead: false,
+      keepOpen: true,
+    });
   }
 
   private runAway() {
@@ -751,6 +936,8 @@ export default class DungeonScene extends Phaser.Scene {
         return;
       }
     }
+
+    this.showCombatText("No path to run!");
   }
 
   private chooseLegalAction(probs: Record<string, number>, confidence = 0): Action {
@@ -766,9 +953,7 @@ export default class DungeonScene extends Phaser.Scene {
 
     if (this.lastAiAction) {
       const reverse = this.reverseOf(this.lastAiAction);
-      if (reverse) {
-        adjusted[reverse] *= 0.35;
-      }
+      if (reverse) adjusted[reverse] *= 0.35;
     }
 
     if (this.isPositionLooping()) {
@@ -832,27 +1017,36 @@ export default class DungeonScene extends Phaser.Scene {
 
     if (shouldExplore && Math.random() < 0.3) {
       const movementOnly = legal.filter(
-        (x) =>
-          x.action === "UP" ||
-          x.action === "DOWN" ||
-          x.action === "LEFT" ||
-          x.action === "RIGHT"
-      );
+  (x) =>
+    (x.action === "UP" ||
+      x.action === "DOWN" ||
+      x.action === "LEFT" ||
+      x.action === "RIGHT") &&
+    x.score > 0
+);
 
-      const pool = movementOnly.length > 0 ? movementOnly : legal;
+const pool = movementOnly.length > 0 ? movementOnly : legal.filter((x) => x.score > 0);
 
-      let total = 0;
-      for (const item of pool) {
-        total += Math.max(0.001, item.score);
+if (pool.length === 0) return "WAIT";
+
+      const positivePool = pool.filter((item) => item.score > 0);
+
+      if (positivePool.length === 0) {
+        return "WAIT";
       }
-
+      
+      let total = 0;
+      for (const item of positivePool) {
+        total += item.score;
+      }
+      
       let r = Math.random() * total;
-      for (const item of pool) {
-        r -= Math.max(0.001, item.score);
+      for (const item of positivePool) {
+        r -= item.score;
         if (r <= 0) return item.action;
       }
-
-      return pool[pool.length - 1].action;
+      
+      return positivePool[positivePool.length - 1].action;
     }
 
     legal.sort((a, b) => b.score - a.score);
@@ -860,11 +1054,12 @@ export default class DungeonScene extends Phaser.Scene {
   }
 
   private killEnemy() {
-    if (this.enemyAlive()) {
+    if (this.enemy.x >= 0 && this.enemy.y >= 0) {
       this.grid[this.enemy.y][this.enemy.x] = 0;
     }
     this.enemy.x = -999;
     this.enemy.y = -999;
+    this.enemy.hp = 0;
   }
 
   private enemyAlive() {
@@ -905,7 +1100,7 @@ export default class DungeonScene extends Phaser.Scene {
 
     this.healthBarSprite.setTexture(this.healthTextureFor(this.hero.hp));
 
-    const topY = Math.max(8, oy - 56);
+    const topY = Math.max(8, oy - 54);
     const centerX = ox + (tile * W) / 2;
 
     const targetWidth = tile * 4.2;
@@ -918,19 +1113,10 @@ export default class DungeonScene extends Phaser.Scene {
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const t = this.grid[y][x];
-
-        const fill =
-          t === 1 ? 0x24314f :
-          t === 3 ? 0x2f9e44 :
-          0x111827;
+        const fill = t === 1 ? 0x24314f : t === 3 ? 0x2f9e44 : 0x111827;
 
         this.graphics.fillStyle(fill, 1);
-        this.graphics.fillRect(
-          ox + x * tile,
-          oy + y * tile,
-          tile - 1,
-          tile - 1
-        );
+        this.graphics.fillRect(ox + x * tile, oy + y * tile, tile - 1, tile - 1);
       }
     }
 
@@ -950,62 +1136,54 @@ export default class DungeonScene extends Phaser.Scene {
     }
 
     const goalPos = centerOf(this.goal.x, this.goal.y);
-
     this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.08)), 0xfbbf24, 1);
     this.graphics.strokeCircle(goalPos.px, goalPos.py, tile * 0.28);
-
     this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.05)), 0xf59e0b, 1);
     this.graphics.strokeCircle(goalPos.px, goalPos.py, tile * 0.16);
 
-    this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.06)), 0xfbbf24, 0.9);
-    this.graphics.strokeRect(
-      ox + (this.hero.x - 2) * tile,
-      oy + (this.hero.y - 2) * tile,
-      tile * 5,
-      tile * 5
-    );
-
     if (this.hiddenTurns > 0) {
       this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.08)), 0x9ca3af, 1);
-      this.graphics.strokeCircle(
-        ox + this.hero.x * tile + tile / 2,
-        oy + this.hero.y * tile + tile / 2,
-        tile / 2
-      );
+      this.graphics.strokeCircle(heroPos.px, heroPos.py, tile / 2);
     }
 
-    if (this.healCooldown > 0) {
-      const inset = Math.floor(tile * 0.15);
-      const heroSize = tile - inset * 2;
-      const barW = heroSize;
-      const barX = ox + this.hero.x * tile + inset;
-      const barY = oy + this.hero.y * tile + Math.floor(tile * 0.05);
-
-      this.graphics.fillStyle(0x111827, 1);
-      this.graphics.fillRect(barX, barY, barW, Math.max(4, Math.floor(tile * 0.12)));
-
-      const pct = 1 - this.healCooldown / 3;
-      this.graphics.fillStyle(0x22c55e, 1);
-      this.graphics.fillRect(
-        barX,
-        barY,
-        Math.floor(barW * pct),
-        Math.max(4, Math.floor(tile * 0.12))
+    const st = useGameStore.getState();
+    if (st.mode === "TRAINING") {
+      const shownRound = Math.min(
+        this.trainingRoundsCompleted + 1,
+        TRAINING_ROUNDS_BEFORE_AI_RUN
       );
+    
+      this.text.setText(
+        `${this.trainingRoundLabel(shownRound)}`
+      );
+      this.text.setVisible(true);
+    } else {
+      this.text.setText("");
+      this.text.setVisible(false);
     }
 
-    this.text.setPosition(ox + 8, oy + 8);
-    this.combatText.setPosition(ox + tile * 6, oy + 8);
+    this.text.setPosition(ox + Math.max(8, tile * 0.3), Math.max(10, oy - 34));
+    this.combatText.setPosition(ox + Math.max(40, tile * 2), oy + 8);
   }
 
-  private placeEnemyOnGrid(g: Tile[][], x: number, y: number, kind: EnemyKind) {
+  private placeEnemyOnGrid(
+    g: Tile[][],
+    x: number,
+    y: number,
+    kind: EnemyKind,
+    hp?: number,
+    damage?: number,
+    hitChance?: number
+  ) {
     this.enemy.x = x;
     this.enemy.y = y;
     this.enemy.kind = kind;
 
     const stats = this.enemyStatsFor(kind);
-    this.enemy.maxHp = stats.maxHp;
+    this.enemy.maxHp = hp ?? stats.maxHp;
     this.enemy.hp = this.enemy.maxHp;
+    this.enemy.damage = damage ?? stats.damage;
+    this.enemy.hitChance = hitChance ?? stats.hitChance;
 
     g[y][x] = 2;
   }
@@ -1060,20 +1238,12 @@ export default class DungeonScene extends Phaser.Scene {
 
     const options =
       Math.abs(dx) >= Math.abs(dy)
-        ? [
-            { dx, dy: 0 },
-            { dx: 0, dy },
-          ]
-        : [
-            { dx: 0, dy },
-            { dx, dy: 0 },
-          ];
+        ? [{ dx, dy: 0 }, { dx: 0, dy }]
+        : [{ dx: 0, dy }, { dx, dy: 0 }];
 
     for (const option of options) {
-      if (
-        (option.dx !== 0 || option.dy !== 0) &&
-        tryMove(this.enemy.x + option.dx, this.enemy.y + option.dy)
-      ) {
+      if ((option.dx !== 0 || option.dy !== 0) &&
+        tryMove(this.enemy.x + option.dx, this.enemy.y + option.dy)) {
         break;
       }
     }
@@ -1158,39 +1328,6 @@ export default class DungeonScene extends Phaser.Scene {
         return { dx: 1, dy: 0 };
       default:
         return { dx: 0, dy: 0 };
-    }
-  }
-
-  private keyToAction(key: string): Action | null {
-    const k = key.toLowerCase();
-
-    switch (k) {
-      case "arrowup":
-      case "w":
-        return "UP";
-      case "arrowdown":
-      case "s":
-        return "DOWN";
-      case "arrowleft":
-      case "a":
-        return "LEFT";
-      case "arrowright":
-      case "d":
-        return "RIGHT";
-      case " ":
-        return "ATTACK";
-      case "enter":
-        return "WAIT";
-      case "h":
-        return "HEAL";
-      case "e":
-        return "HIDE";
-      case "r":
-        return "RUN";
-      case "f":
-        return "FIGHT";
-      default:
-        return null;
     }
   }
 

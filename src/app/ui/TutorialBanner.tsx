@@ -1,4 +1,4 @@
-import { useGameStore } from "../ui/store/useGameStore";
+import { useGameStore } from "../store/useGameStore";
 
 export default function TutorialBanner() {
   const mode = useGameStore((s) => s.mode);

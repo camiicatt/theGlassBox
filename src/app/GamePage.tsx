@@ -1,9 +1,10 @@
 import GameCanvas from "../game/GameCanvas";
-import RightPanel from "./ui/RightPanel";
+import RightPanel from "./ui/HeroBrainPanel";
 import ReviewModal from "./ui/ReviewModal";
 import OptionBoard from "./ui/OptionBoard";
 import TutorialBanner from "./ui/TutorialBanner";
 import DeathModal from "./ui/DeathModal";
+import IntroModal from "./ui/IntroModal";
 
 export default function GamePage() {
   return (
@@ -39,6 +40,8 @@ export default function GamePage() {
         <OptionBoard />
       </div>
 
+
+      <IntroModal />
       <ReviewModal />
       <DeathModal />
     </div>

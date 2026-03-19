@@ -1,4 +1,4 @@
-import type { Action, Example, Prediction } from "../app/ui/store/useGameStore";
+import type { Action, Example, Prediction } from "../app/store/useGameStore";
 import { ACTIONS } from "../game/actions";
 
 function euclidean(a: number[], b: number[]) {

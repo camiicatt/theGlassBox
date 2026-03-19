@@ -1,4 +1,4 @@
-import { useGameStore } from "./store/useGameStore";
+import { useGameStore } from "../store/useGameStore";
 
 export default function DeathModal() {
   const heroDead = useGameStore((s) => (s as any).heroDead);

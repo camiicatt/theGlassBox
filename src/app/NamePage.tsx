@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useGameStore } from "./ui/store/useGameStore";
+import { useGameStore } from "./store/useGameStore";
 import { logStudentStart } from "../lib/supabaseLogger";
 
 function makeStudentId(first: string, lastInitial: string) {

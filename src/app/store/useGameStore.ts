@@ -1,5 +1,7 @@
 import { create } from "zustand";
-export type Mode = "TRAINING" | "AI_RUN" | "REVIEW";
+
+export type Mode = "BOOT" | "TRAINING" | "AI_RUN" | "REVIEW";
+
 export type Action =
   | "UP"
   | "DOWN"
@@ -34,20 +36,20 @@ type GameStore = {
   mode: Mode;
   setMode: (m: Mode) => void;
 
-  studentId: string | null;  //changed to kathy lol
-setStudentId: (id: string | null) => void;
+  studentId: string | null;
+  setStudentId: (id: string | null) => void;
 
-restartToken: number;
-requestRestart: () => void;
+  restartToken: number;
+  requestRestart: () => void;
 
-resetForNewStudent: () => void;
+  resetForNewStudent: () => void;
 
-saveToLocal: () => void;
-loadFromLocal: (id: string | null) => void;
-clearLocalFor: (id: string) => void;
+  saveToLocal: () => void;
+  loadFromLocal: (id: string | null) => void;
+  clearLocalFor: (id: string) => void;
 
-heroDead: boolean;
-setHeroDead: (v: boolean) => void;
+  heroDead: boolean;
+  setHeroDead: (v: boolean) => void;
 
   currentState: number[] | null;
   setCurrentState: (s: number[]) => void;
@@ -74,20 +76,38 @@ setHeroDead: (v: boolean) => void;
 
   battlePrompt: null | {
     enemyName: string;
+    enemyKind: "slime" | "bigSlime" | "spider";
+    enemySprite: string;
+    heroSprite: string;
     enemyHp: number;
     enemyMaxHp: number;
     heroHp: number;
     heroMaxHp: number;
+    lastAction?: "FIGHT" | "HIDE" | "HEAL" | "RUN" | null;
+    heroHit?: boolean;
+    enemyHit?: boolean;
+    heroDead?: boolean;
+    enemyDead?: boolean;
   };
-
+  
   openBattlePrompt: (p: {
     enemyName: string;
+    enemyKind: "slime" | "bigSlime" | "spider";
+    enemySprite: string;
+    heroSprite: string;
     enemyHp: number;
     enemyMaxHp: number;
     heroHp: number;
     heroMaxHp: number;
+    lastAction?: "FIGHT" | "HIDE" | "HEAL" | "RUN" | null;
+    heroHit?: boolean;
+    enemyHit?: boolean;
+    heroDead?: boolean;
+    enemyDead?: boolean;
   }) => void;
+
   closeBattlePrompt: () => void;
+
   battleLog: string;
   setBattleLog: (msg: string) => void;
 
@@ -96,68 +116,73 @@ setHeroDead: (v: boolean) => void;
 };
 
 export const useGameStore = create<GameStore>((set, get) => ({
-  mode: "TRAINING",
+  mode: "BOOT",
   setMode: (m) => set({ mode: m }),
 
-  heroDead: false,
-setHeroDead: (v) => set({ heroDead: v }),
-
-restartToken: 0,
-requestRestart: () => set((s) => ({ restartToken: s.restartToken + 1 })),
-
   studentId: null,
-setStudentId: (id) => set({ studentId: id }),
+  setStudentId: (id) => set({ studentId: id }),
 
-resetForNewStudent: () =>
-  set({
-    mode: "TRAINING",
-    currentState: null,
-    examples: [],
-    prediction: null,
-    reviewMoments: [],
-    reviewIndex: 0,
-    runDungeonIndex: 0,
-    lowConfThreshold: 0.55,
-    battlePrompt: null,
-    battleLog: "",
-    pendingAction: null,
-  }),
+  restartToken: 0,
+  requestRestart: () => set((s) => ({ restartToken: s.restartToken + 1 })),
 
-saveToLocal: () => {
-  const st = get();
-  if (!st.studentId) return;
+  heroDead: false,
+  setHeroDead: (v) => set({ heroDead: v }),
 
-  const payload = {
-    studentId: st.studentId,
-    examples: st.examples,
-    lowConfThreshold: st.lowConfThreshold,
-    // add more later if you want (tutorial step, stats, etc)
-  };
+  resetForNewStudent: () =>
+    set({
+      mode: "BOOT",
+      currentState: null,
+      examples: [],
+      prediction: null,
+      reviewMoments: [],
+      reviewIndex: 0,
+      runDungeonIndex: 0,
+      lowConfThreshold: 0.55,
+      battlePrompt: null,
+      battleLog: "",
+      pendingAction: null,
+      heroDead: false,
+    }),
 
-  localStorage.setItem(`dungeon-ai:${st.studentId}`, JSON.stringify(payload));
-},
+  saveToLocal: () => {
+    const st = get();
+    if (!st.studentId) return;
 
-loadFromLocal: (id) => {
-  const raw = localStorage.getItem(`dungeon-ai:${id}`);
-  if (!raw) return;
+    const payload = {
+      studentId: st.studentId,
+      examples: st.examples,
+      lowConfThreshold: st.lowConfThreshold,
+    };
 
-  const data = JSON.parse(raw);
+    localStorage.setItem(`dungeon-ai:${st.studentId}`, JSON.stringify(payload));
+  },
 
-  set({
-    studentId: data.studentId ?? id,
-    examples: data.examples ?? [],
-    lowConfThreshold: data.lowConfThreshold ?? 0.55,
-    mode: "TRAINING",
-    prediction: null,
-    battlePrompt: null,
-    battleLog: "",
-    pendingAction: null,
-  });
-},
+  loadFromLocal: (id) => {
+    if (!id) return;
 
-clearLocalFor: (id) => {
-  localStorage.removeItem(`dungeon-ai:${id}`);
-},
+    const raw = localStorage.getItem(`dungeon-ai:${id}`);
+    if (!raw) return;
+
+    const data = JSON.parse(raw);
+
+    set({
+      studentId: data.studentId ?? id,
+      examples: data.examples ?? [],
+      lowConfThreshold: data.lowConfThreshold ?? 0.55,
+      mode: "TRAINING",
+      prediction: null,
+      reviewMoments: [],
+      reviewIndex: 0,
+      battlePrompt: null,
+      battleLog: "",
+      pendingAction: null,
+      heroDead: false,
+    });
+  },
+
+  clearLocalFor: (id) => {
+    localStorage.removeItem(`dungeon-ai:${id}`);
+  },
 
   currentState: null,
   setCurrentState: (s) => set({ currentState: s }),
@@ -188,6 +213,7 @@ clearLocalFor: (id) => {
   battlePrompt: null,
   openBattlePrompt: (p) => set({ battlePrompt: p }),
   closeBattlePrompt: () => set({ battlePrompt: null }),
+
   battleLog: "",
   setBattleLog: (msg) => set({ battleLog: msg }),
 
