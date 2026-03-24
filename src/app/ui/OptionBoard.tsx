@@ -3,16 +3,18 @@ import { useGameStore } from "../store/useGameStore";
 import type { Action } from "../store/useGameStore";
 
 function spriteUrl(key?: string) {
+  const base = import.meta.env.BASE_URL;
+
   switch (key) {
     case "slime":
-      return "/src/assets/monsters/slimeGreen.png";
+      return `${base}assets/monsters/slimeGreen.png`;
     case "big-slime":
-      return "/src/assets/monsters/big-slime.png";
+      return `${base}assets/monsters/big-slime.png`;
     case "spider-blue":
-      return "/src/assets/monsters/spiderBlue.png";
+      return `${base}assets/monsters/spiderBlue.png`;
     case "hero":
     default:
-      return "/src/assets/hero.png";
+      return `${base}assets/hero.png`;
   }
 }
 
@@ -179,7 +181,7 @@ export default function OptionBoard() {
 
   const aiChosenAction = prompt.aiChosenAction ?? null;
   const aiThinking = !!prompt.aiThinking;
-  
+
   const probs =
     prompt.aiProbs ??
     (isAiMode && prediction?.probs ? (prediction.probs as Partial<Record<Action, number>>) : undefined);

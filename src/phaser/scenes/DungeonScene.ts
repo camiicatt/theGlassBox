@@ -209,21 +209,35 @@ export default class DungeonScene extends Phaser.Scene {
   }
 
   preload() {
-    this.load.image("slime", "/src/assets/monsters/slimeGreen.png");
-    this.load.image("big-slime", "/src/assets/monsters/big-slime.png");
-    this.load.image("spider-blue", "/src/assets/monsters/spiderBlue.png");
-    this.load.image("hero", "/src/assets/hero.png");
-
-    this.load.image("health0", "/src/assets/healthBar/health0.png");
-    this.load.image("health1", "/src/assets/healthBar/health1.png");
-    this.load.image("health2", "/src/assets/healthBar/health2.png");
-    this.load.image("health3", "/src/assets/healthBar/health3.png");
-    this.load.image("health4", "/src/assets/healthBar/health4.png");
-    this.load.image("health5", "/src/assets/healthBar/health5.png");
+    const base = import.meta.env.BASE_URL;
+  
+    this.load.image("slime", `${base}assets/monsters/slimeGreen.png`);
+    this.load.image("big-slime", `${base}assets/monsters/big-slime.png`);
+    this.load.image("spider-blue", `${base}assets/monsters/spiderBlue.png`);
+    this.load.image("hero", `${base}assets/hero.png`);
+  
+    this.load.image("health0", `${base}assets/healthBar/health0.png`);
+    this.load.image("health1", `${base}assets/healthBar/health1.png`);
+    this.load.image("health2", `${base}assets/healthBar/health2.png`);
+    this.load.image("health3", `${base}assets/healthBar/health3.png`);
+    this.load.image("health4", `${base}assets/healthBar/health4.png`);
+    this.load.image("health5", `${base}assets/healthBar/health5.png`);
   }
 
   create() {
     this.graphics = this.add.graphics();
+
+    console.log("hero exists", this.textures.exists("hero"));
+    if (!this.textures.exists("hero")) {
+      console.error("Hero texture failed to load!");
+    }
+console.log("slime exists", this.textures.exists("slime"));
+
+const heroTex = this.textures.get("hero");
+const slimeTex = this.textures.get("slime");
+
+console.log("hero texture", heroTex);
+console.log("slime texture", slimeTex);
 
     this.text = this.add.text(10, 10, "", {
       fontFamily: "monospace",
