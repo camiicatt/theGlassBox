@@ -32,6 +32,31 @@ export type ReviewMoment = {
   aiChose: Action;
 };
 
+export type EnemyKind = "slime" | "bigSlime" | "spider";
+
+export type BattlePrompt = {
+  enemyName: string;
+  enemyKind: EnemyKind;
+  enemySprite: string;
+  heroSprite: string;
+  enemyHp: number;
+  enemyMaxHp: number;
+  heroHp: number;
+  heroMaxHp: number;
+
+  lastAction?: "FIGHT" | "HIDE" | "HEAL" | "RUN" | null;
+  heroHit?: boolean;
+  enemyHit?: boolean;
+  heroDead?: boolean;
+  enemyDead?: boolean;
+
+  aiMode?: boolean;
+  aiThinking?: boolean;
+  aiChosenAction?: Action | null;
+  aiConfidence?: number;
+  aiProbs?: Partial<Record<Action, number>>;
+};
+
 type GameStore = {
   mode: Mode;
   setMode: (m: Mode) => void;
@@ -74,38 +99,8 @@ type GameStore = {
   lowConfThreshold: number;
   setLowConfThreshold: (v: number) => void;
 
-  battlePrompt: null | {
-    enemyName: string;
-    enemyKind: "slime" | "bigSlime" | "spider";
-    enemySprite: string;
-    heroSprite: string;
-    enemyHp: number;
-    enemyMaxHp: number;
-    heroHp: number;
-    heroMaxHp: number;
-    lastAction?: "FIGHT" | "HIDE" | "HEAL" | "RUN" | null;
-    heroHit?: boolean;
-    enemyHit?: boolean;
-    heroDead?: boolean;
-    enemyDead?: boolean;
-  };
-  
-  openBattlePrompt: (p: {
-    enemyName: string;
-    enemyKind: "slime" | "bigSlime" | "spider";
-    enemySprite: string;
-    heroSprite: string;
-    enemyHp: number;
-    enemyMaxHp: number;
-    heroHp: number;
-    heroMaxHp: number;
-    lastAction?: "FIGHT" | "HIDE" | "HEAL" | "RUN" | null;
-    heroHit?: boolean;
-    enemyHit?: boolean;
-    heroDead?: boolean;
-    enemyDead?: boolean;
-  }) => void;
-
+  battlePrompt: BattlePrompt | null;
+  openBattlePrompt: (p: BattlePrompt) => void;
   closeBattlePrompt: () => void;
 
   battleLog: string;
@@ -127,6 +122,42 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   heroDead: false,
   setHeroDead: (v) => set({ heroDead: v }),
+
+  currentState: null,
+  setCurrentState: (s) => set({ currentState: s }),
+
+  examples: [],
+  addExample: (ex) => set((state) => ({ examples: [...state.examples, ex] })),
+  clearExamples: () => set({ examples: [] }),
+
+  prediction: null,
+  setPrediction: (p) => set({ prediction: p }),
+
+  reviewMoments: [],
+  setReviewMoments: (m) => set({ reviewMoments: m }),
+
+  reviewIndex: 0,
+  nextReview: () =>
+    set((state) => ({
+      reviewIndex: Math.min(state.reviewIndex + 1, state.reviewMoments.length),
+    })),
+  resetReview: () => set({ reviewIndex: 0, reviewMoments: [] }),
+
+  runDungeonIndex: 0,
+  setRunDungeonIndex: (i) => set({ runDungeonIndex: i }),
+
+  lowConfThreshold: 0.55,
+  setLowConfThreshold: (v) => set({ lowConfThreshold: v }),
+
+  battlePrompt: null,
+  openBattlePrompt: (p) => set({ battlePrompt: p }),
+  closeBattlePrompt: () => set({ battlePrompt: null }),
+
+  battleLog: "",
+  setBattleLog: (msg) => set({ battleLog: msg }),
+
+  pendingAction: null,
+  setPendingAction: (a) => set({ pendingAction: a }),
 
   resetForNewStudent: () =>
     set({
@@ -183,40 +214,4 @@ export const useGameStore = create<GameStore>((set, get) => ({
   clearLocalFor: (id) => {
     localStorage.removeItem(`dungeon-ai:${id}`);
   },
-
-  currentState: null,
-  setCurrentState: (s) => set({ currentState: s }),
-
-  examples: [],
-  addExample: (ex) => set((state) => ({ examples: [...state.examples, ex] })),
-  clearExamples: () => set({ examples: [] }),
-
-  prediction: null,
-  setPrediction: (p) => set({ prediction: p }),
-
-  reviewMoments: [],
-  setReviewMoments: (m) => set({ reviewMoments: m }),
-
-  reviewIndex: 0,
-  nextReview: () =>
-    set((state) => ({
-      reviewIndex: Math.min(state.reviewIndex + 1, state.reviewMoments.length),
-    })),
-  resetReview: () => set({ reviewIndex: 0, reviewMoments: [] }),
-
-  runDungeonIndex: 0,
-  setRunDungeonIndex: (i) => set({ runDungeonIndex: i }),
-
-  lowConfThreshold: 0.55,
-  setLowConfThreshold: (v) => set({ lowConfThreshold: v }),
-
-  battlePrompt: null,
-  openBattlePrompt: (p) => set({ battlePrompt: p }),
-  closeBattlePrompt: () => set({ battlePrompt: null }),
-
-  battleLog: "",
-  setBattleLog: (msg) => set({ battleLog: msg }),
-
-  pendingAction: null,
-  setPendingAction: (a) => set({ pendingAction: a }),
 }));
