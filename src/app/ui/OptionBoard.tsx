@@ -32,35 +32,45 @@ function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
+const ACTION_ORDER: Action[] = ["FIGHT", "HIDE", "HEAL", "RUN"];
+
+function actionLabel(action: Action) {
+  switch (action) {
+    case "FIGHT":
+      return "⚔ Fight";
+    case "HIDE":
+      return "👤 Hide";
+    case "HEAL":
+      return "✚ Heal";
+    case "RUN":
+      return "➜ Run";
+    default:
+      return action;
+  }
+}
+
+function actionPct(
+  probs: Partial<Record<Action, number>> | undefined,
+  action: Action
+) {
+  const raw = probs?.[action] ?? 0;
+  return Math.max(0, Math.min(100, Math.round(raw * 100)));
+}
+
 export default function OptionBoard() {
   const mode = useGameStore((s) => s.mode);
   const prompt = useGameStore((s) => s.battlePrompt);
   const battleLog = useGameStore((s) => s.battleLog);
   const setPendingAction = useGameStore((s) => s.setPendingAction);
+  const prediction = useGameStore((s) => s.prediction);
 
   const [heroFx, setHeroFx] = useState<FxParticle[]>([]);
   const [enemyFx, setEnemyFx] = useState<FxParticle[]>([]);
   const [selectedAction, setSelectedAction] = useState<Action | null>(null);
 
-  // These keys force the wrapper div to remount so the CSS animation reliably restarts.
-  const heroMotionKey = useMemo(() => {
-    if (!prompt) return "hero-idle";
-    return [
-      prompt.lastAction ?? "NONE",
-      prompt.enemyHit ? "enemyHit" : "noEnemyHit",
-      prompt.heroDead ? "heroDead" : "heroAlive",
-      prompt.heroHp,
-    ].join("-");
-  }, [prompt?.lastAction, prompt?.enemyHit, prompt?.heroDead, prompt?.heroHp]);
-
-  const enemyMotionKey = useMemo(() => {
-    if (!prompt) return "enemy-idle";
-    return [
-      prompt.heroHit ? "heroHit" : "noHeroHit",
-      prompt.enemyDead ? "enemyDead" : "enemyAlive",
-      prompt.enemyHp,
-    ].join("-");
-  }, [prompt?.heroHit, prompt?.enemyDead, prompt?.enemyHp]);
+  const isTrainingMode = mode === "TRAINING";
+  const isAiMode = mode === "AI_RUN";
+  const isInteractive = isTrainingMode;
 
   useEffect(() => {
     if (!prompt) return;
@@ -125,9 +135,37 @@ export default function OptionBoard() {
     prompt?.enemyHp,
   ]);
 
-  if (!prompt || mode !== "TRAINING") return null;
+  const heroMotionKey = useMemo(() => {
+    if (!prompt) return "hero-idle";
+    return [
+      prompt.lastAction ?? "NONE",
+      prompt.enemyHit ? "enemyHit" : "noEnemyHit",
+      prompt.heroDead ? "heroDead" : "heroAlive",
+      prompt.heroHp,
+      prompt.aiChosenAction ?? "no-ai-choice",
+    ].join("-");
+  }, [
+    prompt?.lastAction,
+    prompt?.enemyHit,
+    prompt?.heroDead,
+    prompt?.heroHp,
+    prompt?.aiChosenAction,
+  ]);
+
+  const enemyMotionKey = useMemo(() => {
+    if (!prompt) return "enemy-idle";
+    return [
+      prompt.heroHit ? "heroHit" : "noHeroHit",
+      prompt.enemyDead ? "enemyDead" : "enemyAlive",
+      prompt.enemyHp,
+    ].join("-");
+  }, [prompt?.heroHit, prompt?.enemyDead, prompt?.enemyHp]);
+
+  if (!prompt || (!isTrainingMode && !isAiMode)) return null;
 
   const choose = (a: Action) => {
+    if (!isInteractive) return;
+
     setSelectedAction(a);
     setPendingAction(a);
 
@@ -139,8 +177,14 @@ export default function OptionBoard() {
   const heroHpPct = hpPercent(prompt.heroHp, prompt.heroMaxHp);
   const enemyHpPct = hpPercent(prompt.enemyHp, prompt.enemyMaxHp);
 
-  // Move the WRAPPER, not the <img>. That makes the animation visible even
-  // if the PNG has transparent padding around the character.
+  const aiChosenAction = prompt.aiChosenAction ?? null;
+  const aiThinking = !!prompt.aiThinking;
+  const aiMode = !!prompt.aiMode;
+
+  const probs =
+    prompt.aiProbs ??
+    (isAiMode && prediction?.probs ? (prediction.probs as Partial<Record<Action, number>>) : undefined);
+
   const heroFrameClass = [
     "battleSpriteFrame",
     prompt.lastAction === "FIGHT" ? "heroAttack" : "",
@@ -161,18 +205,53 @@ export default function OptionBoard() {
     .filter(Boolean)
     .join(" ");
 
+  const topRightLabel = isAiMode
+    ? `AI confidence: ${Math.round((prompt.aiConfidence ?? prediction?.confidence ?? 0) * 100)}%`
+    : `Enemy HP: ${prompt.enemyHp}/${prompt.enemyMaxHp}`;
+
+  const feedMessage = isAiMode
+    ? aiThinking
+      ? "The AI is looking at the choices..."
+      : aiChosenAction
+      ? `The AI chose ${aiChosenAction}.`
+      : battleLog || "The AI is deciding."
+    : battleLog || "Choose an action to begin.";
+
+  const actionButtonStyle = (action: Action) => {
+    const base =
+      action === "FIGHT"
+        ? fightBtn
+        : action === "HIDE"
+        ? hideBtn
+        : action === "HEAL"
+        ? healBtn
+        : runBtn;
+
+    return {
+      ...base,
+      ...(selectedAction === action ? pressedBtn : {}),
+      ...(aiChosenAction === action ? aiChosenBtn : {}),
+      cursor: isInteractive ? "pointer" : "default",
+      opacity: aiThinking || isInteractive ? 1 : 0.96,
+    };
+  };
+
   return (
     <div style={overlay}>
       <div style={card}>
         <div style={headerRow}>
           <div>
-            <div style={title}>Battle: {prompt.enemyName}</div>
-            <div style={subtitle}>Pick an action:</div>
+            <div style={title}>
+              {isAiMode ? "AI Choice Mode" : `Battle: ${prompt.enemyName}`}
+            </div>
+            <div style={subtitle}>
+              {isAiMode
+                ? "Watch the AI think, compare the confidence levels, then see the action happen."
+                : "Pick an action:"}
+            </div>
           </div>
 
-          <div style={enemyHpTop}>
-            Enemy HP: {prompt.enemyHp}/{prompt.enemyMaxHp}
-          </div>
+          <div style={enemyHpTop}>{topRightLabel}</div>
         </div>
 
         <div style={arena}>
@@ -213,7 +292,7 @@ export default function OptionBoard() {
           </div>
 
           <div style={vsWrap}>
-            <div style={vsText}>VS</div>
+            <div style={vsText}>{isAiMode ? "AI" : "VS"}</div>
           </div>
 
           <div style={fighterCol}>
@@ -254,56 +333,40 @@ export default function OptionBoard() {
         </div>
 
         <div style={enemyActionBox}>
-          <div style={feedLabel}>Battle Feed</div>
-          <div style={feedText}>
-            {battleLog || "Choose an action to begin."}
-          </div>
+          <div style={feedLabel}>{isAiMode ? "AI Battle Feed" : "Battle Feed"}</div>
+          <div style={feedText}>{feedMessage}</div>
         </div>
 
         <div style={buttonGrid}>
-          <button
-            style={{
-              ...fightBtn,
-              ...(selectedAction === "FIGHT" ? pressedBtn : {}),
-            }}
-            onClick={() => choose("FIGHT")}
-          >
-            ⚔ Fight
-          </button>
+          {ACTION_ORDER.map((action) => {
+            const pct = actionPct(probs, action);
 
-          <button
-            style={{
-              ...hideBtn,
-              ...(selectedAction === "HIDE" ? pressedBtn : {}),
-            }}
-            onClick={() => choose("HIDE")}
-          >
-            👤 Hide
-          </button>
+            return (
+              <button
+                key={action}
+                style={actionButtonStyle(action)}
+                onClick={() => choose(action)}
+                disabled={!isInteractive}
+              >
+                <div style={actionTitle}>{actionLabel(action)}</div>
 
-          <button
-            style={{
-              ...healBtn,
-              ...(selectedAction === "HEAL" ? pressedBtn : {}),
-            }}
-            onClick={() => choose("HEAL")}
-          >
-            ✚ Heal
-          </button>
-
-          <button
-            style={{
-              ...runBtn,
-              ...(selectedAction === "RUN" ? pressedBtn : {}),
-            }}
-            onClick={() => choose("RUN")}
-          >
-            ➜ Run
-          </button>
+                {isAiMode && (
+                  <>
+                    <div style={confidenceText}>{pct}% confidence</div>
+                    <div style={miniTrack}>
+                      <div style={{ ...miniFill, width: `${pct}%` }} />
+                    </div>
+                  </>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         <div style={footerText}>
-          This choice becomes a training example for the AI.
+          {isAiMode
+            ? "The AI is using what it learned from the examples."
+            : "This choice becomes a training example for the AI."}
         </div>
       </div>
 
@@ -385,35 +448,26 @@ export default function OptionBoard() {
 
         @keyframes heroHealPulseAnim {
           0% { transform: scale(1); filter: brightness(1); }
-          35% { transform: scale(1.09); filter: brightness(1.25); }
+          50% { transform: scale(1.08); filter: brightness(1.28); }
           100% { transform: scale(1); filter: brightness(1); }
         }
 
         @keyframes heroHideFadeAnim {
-          0% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(0.95); opacity: 0.45; }
-          100% { transform: scale(1); opacity: 1; }
+          0% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.38; transform: scale(0.94); }
+          100% { opacity: 1; transform: scale(1); }
         }
 
         @keyframes heroRunStepAnim {
-          0% { transform: translateX(0) scale(1); }
-          35% { transform: translateX(-28px) scale(1.04); }
-          100% { transform: translateX(0) scale(1); }
+          0% { transform: translateX(0); }
+          35% { transform: translateX(-34px); }
+          100% { transform: translateX(0); }
         }
 
         @keyframes floatUpFade {
-          0% {
-            opacity: 0;
-            transform: translate(-50%, -50%) translateY(10px) scale(0.8);
-          }
-          20% {
-            opacity: 1;
-            transform: translate(-50%, -50%) translateY(0px) scale(1);
-          }
-          100% {
-            opacity: 0;
-            transform: translate(-50%, -50%) translateY(-34px) scale(1.18);
-          }
+          0% { opacity: 0; transform: translate(-50%, -10%) scale(0.8); }
+          10% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -140%) scale(1.12); }
         }
       `}</style>
     </div>
@@ -423,219 +477,270 @@ export default function OptionBoard() {
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "linear-gradient(180deg, #020617 0%, #0b1020 55%, #111827 100%)",
+  background: "rgba(2,6,23,0.48)",
+  backdropFilter: "blur(4px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  zIndex: 220,
-  pointerEvents: "auto",
+  zIndex: 50,
+  padding: 20,
 };
 
 const card: React.CSSProperties = {
-  width: 780,
-  maxWidth: "calc(100vw - 32px)",
-  padding: 28,
-  borderRadius: 22,
-  background: "linear-gradient(135deg, #0b1020, #111a33)",
-  border: "1px solid #1f2a44",
-  color: "#e5e7eb",
-  boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
-  pointerEvents: "auto",
+  width: "min(920px, 96vw)",
+  background: "linear-gradient(180deg, #0f172a 0%, #111827 100%)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 24,
+  boxShadow: "0 24px 70px rgba(0,0,0,0.42)",
+  padding: 22,
+  color: "#f8fafc",
 };
 
 const headerRow: React.CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
-  alignItems: "center",
+  alignItems: "flex-start",
   gap: 16,
+  marginBottom: 18,
 };
 
 const title: React.CSSProperties = {
-  fontSize: 30,
+  fontSize: 28,
   fontWeight: 900,
+  letterSpacing: 0.3,
 };
 
 const subtitle: React.CSSProperties = {
-  fontSize: 15,
-  opacity: 0.9,
+  marginTop: 6,
+  fontSize: 14,
+  color: "#cbd5e1",
+  lineHeight: 1.4,
+  maxWidth: 520,
 };
 
 const enemyHpTop: React.CSSProperties = {
-  fontSize: 16,
-  opacity: 0.95,
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 999,
+  padding: "10px 14px",
+  fontWeight: 800,
+  fontSize: 14,
+  whiteSpace: "nowrap",
 };
 
 const arena: React.CSSProperties = {
-  marginTop: 18,
   display: "grid",
   gridTemplateColumns: "1fr auto 1fr",
-  gap: 20,
+  gap: 18,
   alignItems: "center",
+  marginBottom: 18,
 };
 
 const fighterCol: React.CSSProperties = {
-  display: "grid",
-  justifyItems: "center",
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "center",
   gap: 12,
 };
 
 const fighterName: React.CSSProperties = {
   fontSize: 18,
-  fontWeight: 800,
+  fontWeight: 900,
 };
 
 const spriteFrameHero: React.CSSProperties = {
   width: 190,
-  height: 170,
-  borderRadius: 18,
-  display: "grid",
-  placeItems: "center",
+  height: 190,
+  borderRadius: 22,
+  background: "radial-gradient(circle at 50% 35%, rgba(59,130,246,0.22), rgba(15,23,42,0.2))",
+  border: "1px solid rgba(255,255,255,0.08)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   position: "relative",
   overflow: "hidden",
-  background:
-    "radial-gradient(circle at center, rgba(34,197,94,0.18), rgba(15,23,42,0.05) 70%)",
 };
 
 const spriteFrameEnemy: React.CSSProperties = {
   width: 190,
-  height: 170,
-  borderRadius: 18,
-  display: "grid",
-  placeItems: "center",
+  height: 190,
+  borderRadius: 22,
+  background: "radial-gradient(circle at 50% 35%, rgba(239,68,68,0.2), rgba(15,23,42,0.2))",
+  border: "1px solid rgba(255,255,255,0.08)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
   position: "relative",
   overflow: "hidden",
-  background:
-    "radial-gradient(circle at center, rgba(239,68,68,0.18), rgba(15,23,42,0.05) 70%)",
 };
 
 const spriteStyle: React.CSSProperties = {
-  width: 132,
-  height: 132,
+  width: 130,
+  height: 130,
   objectFit: "contain",
   imageRendering: "pixelated",
 };
 
 const vsWrap: React.CSSProperties = {
-  display: "grid",
-  placeItems: "center",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const vsText: React.CSSProperties = {
-  fontSize: 32,
+  fontSize: 28,
   fontWeight: 900,
-  color: "#fbbf24",
-  letterSpacing: 1,
-};
-
-const enemyActionBox: React.CSSProperties = {
-  marginTop: 18,
-  padding: "12px 14px",
-  borderRadius: 14,
-  border: "1px solid #334155",
-  background: "rgba(15, 23, 42, 0.85)",
-};
-
-const feedLabel: React.CSSProperties = {
-  fontSize: 12,
-  opacity: 0.75,
-  textTransform: "uppercase",
-  letterSpacing: 0.4,
-};
-
-const feedText: React.CSSProperties = {
-  marginTop: 6,
-  fontSize: 18,
-  fontWeight: 700,
-  minHeight: 24,
+  color: "#fde68a",
+  opacity: 0.9,
 };
 
 const healthPanel: React.CSSProperties = {
-  width: 220,
+  width: "100%",
+  maxWidth: 220,
+  background: "rgba(255,255,255,0.04)",
+  borderRadius: 16,
   padding: 12,
-  borderRadius: 12,
-  border: "1px solid #334155",
-  background: "rgba(15, 23, 42, 0.65)",
+  border: "1px solid rgba(255,255,255,0.08)",
 };
 
 const healthLabel: React.CSSProperties = {
   fontSize: 12,
-  opacity: 0.8,
+  color: "#cbd5e1",
+  marginBottom: 4,
+  fontWeight: 700,
 };
 
 const healthValue: React.CSSProperties = {
-  marginTop: 4,
-  fontSize: 18,
-  fontWeight: 800,
+  fontSize: 16,
+  fontWeight: 900,
+  marginBottom: 8,
 };
 
 const barTrack: React.CSSProperties = {
-  marginTop: 8,
-  height: 10,
+  width: "100%",
+  height: 12,
+  background: "rgba(255,255,255,0.08)",
   borderRadius: 999,
   overflow: "hidden",
-  background: "#1e293b",
 };
 
 const barFillHero: React.CSSProperties = {
   height: "100%",
-  background: "linear-gradient(90deg, #22c55e, #16a34a)",
+  borderRadius: 999,
+  background: "linear-gradient(90deg, #22c55e, #86efac)",
 };
 
 const barFillEnemy: React.CSSProperties = {
   height: "100%",
-  background: "linear-gradient(90deg, #ef4444, #dc2626)",
+  borderRadius: 999,
+  background: "linear-gradient(90deg, #ef4444, #fca5a5)",
+};
+
+const enemyActionBox: React.CSSProperties = {
+  background: "rgba(255,255,255,0.04)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 18,
+  padding: 14,
+  marginBottom: 18,
+};
+
+const feedLabel: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  color: "#93c5fd",
+  textTransform: "uppercase",
+  letterSpacing: 0.8,
+  marginBottom: 6,
+};
+
+const feedText: React.CSSProperties = {
+  fontSize: 16,
+  fontWeight: 700,
+  lineHeight: 1.4,
 };
 
 const buttonGrid: React.CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
-  gap: 10,
-  marginTop: 16,
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 12,
+  marginBottom: 14,
 };
 
-const baseActionBtn: React.CSSProperties = {
-  padding: "14px 12px",
-  borderRadius: 14,
-  border: "1px solid transparent",
-  color: "white",
+const baseBtn: React.CSSProperties = {
+  border: "none",
+  borderRadius: 18,
+  padding: "16px 16px 14px",
+  color: "#fff",
   fontWeight: 900,
-  fontSize: 17,
-  cursor: "pointer",
-  transition: "transform 120ms ease, filter 120ms ease, box-shadow 120ms ease",
-  boxShadow: "0 8px 18px rgba(0,0,0,0.22)",
+  fontSize: 18,
+  textAlign: "left",
+  transition: "transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease",
+  minHeight: 86,
 };
 
 const fightBtn: React.CSSProperties = {
-  ...baseActionBtn,
-  background: "linear-gradient(135deg, #ef4444, #b91c1c)",
-  border: "1px solid #f87171",
+  ...baseBtn,
+  background: "linear-gradient(180deg, #dc2626, #991b1b)",
+  boxShadow: "0 12px 24px rgba(127,29,29,0.35)",
 };
 
 const hideBtn: React.CSSProperties = {
-  ...baseActionBtn,
-  background: "linear-gradient(135deg, #64748b, #334155)",
-  border: "1px solid #94a3b8",
+  ...baseBtn,
+  background: "linear-gradient(180deg, #475569, #1e293b)",
+  boxShadow: "0 12px 24px rgba(15,23,42,0.35)",
 };
 
 const healBtn: React.CSSProperties = {
-  ...baseActionBtn,
-  background: "linear-gradient(135deg, #22c55e, #15803d)",
-  border: "1px solid #86efac",
+  ...baseBtn,
+  background: "linear-gradient(180deg, #16a34a, #166534)",
+  boxShadow: "0 12px 24px rgba(22,101,52,0.35)",
 };
 
 const runBtn: React.CSSProperties = {
-  ...baseActionBtn,
-  background: "linear-gradient(135deg, #f59e0b, #d97706)",
-  border: "1px solid #fcd34d",
+  ...baseBtn,
+  background: "linear-gradient(180deg, #d97706, #92400e)",
+  boxShadow: "0 12px 24px rgba(146,64,14,0.35)",
 };
 
 const pressedBtn: React.CSSProperties = {
-  transform: "scale(0.97)",
-  filter: "brightness(1.08)",
+  transform: "translateY(2px) scale(0.985)",
+};
+
+const aiChosenBtn: React.CSSProperties = {
+  outline: "3px solid rgba(255,255,255,0.88)",
+  transform: "scale(1.02)",
+  boxShadow: "0 0 0 5px rgba(255,255,255,0.12), 0 14px 28px rgba(0,0,0,0.32)",
+};
+
+const actionTitle: React.CSSProperties = {
+  fontSize: 20,
+  fontWeight: 900,
+};
+
+const confidenceText: React.CSSProperties = {
+  marginTop: 6,
+  fontSize: 12,
+  fontWeight: 800,
+  opacity: 0.95,
+};
+
+const miniTrack: React.CSSProperties = {
+  marginTop: 8,
+  height: 8,
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.18)",
+  overflow: "hidden",
+};
+
+const miniFill: React.CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+  background: "rgba(255,255,255,0.92)",
 };
 
 const footerText: React.CSSProperties = {
-  marginTop: 12,
-  fontSize: 12,
-  opacity: 0.75,
+  fontSize: 13,
+  color: "#cbd5e1",
+  textAlign: "center",
+  fontWeight: 700,
 };

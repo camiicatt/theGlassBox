@@ -197,6 +197,13 @@ export default class DungeonScene extends Phaser.Scene {
     },
   ];
 
+  private aiPreviewLocked = false;
+  private aiPreviewAction: Action | null = null;
+  private aiPreviewThinking = false;
+  private aiPreviewUntil = 0;
+  private aiPreviewProbs: Partial<Record<Action, number>> = {};
+  private aiPreviewConfidence = 0;
+
   constructor() {
     super("DungeonScene");
   }
@@ -261,32 +268,96 @@ export default class DungeonScene extends Phaser.Scene {
   update(time: number) {
     const st = useGameStore.getState();
     const choice = st.pendingAction;
-
+  
     if (st.restartToken !== this.lastRestartToken) {
       this.lastRestartToken = st.restartToken;
       this.fullReset();
       return;
     }
-
+  
     if (choice) {
       st.setPendingAction(null);
       this.step(choice, true);
       return;
     }
-
-    if (st.mode === "AI_RUN" && time - this.lastStepAt > 250) {
-      this.lastStepAt = time;
-
-      const stateVec = st.currentState;
-      if (!stateVec) return;
-
-      const pred = knnPredict(stateVec, st.examples, 7);
-      st.setPrediction(pred);
-
-      const chosen = this.chooseLegalAction(pred.probs, pred.confidence);
-      this.lastAiAction = chosen;
-      this.step(chosen, false);
+  
+    if (st.mode !== "AI_RUN") return;
+    if (time < this.aiPreviewUntil) return;
+    if (this.aiPreviewLocked) return;
+    if (time - this.lastStepAt < 220) return;
+  
+    this.lastStepAt = time;
+  
+    const stateVec = st.currentState;
+    if (!stateVec) return;
+  
+    const pred = knnPredict(stateVec, st.examples, 7);
+    st.setPrediction(pred);
+  
+    const chosen = this.chooseLegalAction(pred.probs, pred.confidence);
+  
+    if (this.inBattleEncounter && this.getActiveEnemy()) {
+      this.startAiBattlePreview(chosen, pred.probs as Partial<Record<Action, number>>, pred.confidence);
+      return;
     }
+  
+    this.lastAiAction = chosen;
+    this.step(chosen, false);
+  }
+
+  private startAiBattlePreview(
+    action: Action,
+    probs: Partial<Record<Action, number>>,
+    confidence: number
+  ) {
+    this.aiPreviewLocked = true;
+    this.aiPreviewThinking = true;
+    this.aiPreviewAction = null;
+    this.aiPreviewProbs = probs;
+    this.aiPreviewConfidence = confidence;
+  
+    this.showCombatText("The AI is thinking...", "info");
+    this.syncBattlePrompt({ keepOpen: true });
+    this.render();
+  
+    this.aiPreviewUntil = this.time.now + 900;
+  
+    this.time.delayedCall(900, () => {
+      this.aiPreviewThinking = false;
+      this.aiPreviewAction = action;
+  
+      this.showCombatText(`The AI chose ${action}.`, "info");
+      this.syncBattlePrompt({ keepOpen: true });
+      this.render();
+  
+      this.aiPreviewUntil = this.time.now + 700;
+  
+      this.time.delayedCall(700, () => {
+        this.lastAiAction = action;
+        this.step(action, false);
+  
+        this.aiPreviewUntil = this.time.now + 450;
+  
+        this.time.delayedCall(450, () => {
+          this.aiPreviewLocked = false;
+          this.aiPreviewThinking = false;
+          this.aiPreviewAction = null;
+          this.aiPreviewProbs = {};
+          this.aiPreviewConfidence = 0;
+          this.syncBattlePrompt();
+          this.render();
+        });
+      });
+    });
+  }
+  
+  private resetAiPreview() {
+    this.aiPreviewLocked = false;
+    this.aiPreviewAction = null;
+    this.aiPreviewThinking = false;
+    this.aiPreviewUntil = 0;
+    this.aiPreviewProbs = {};
+    this.aiPreviewConfidence = 0;
   }
 
   private setupControls() {
@@ -320,6 +391,8 @@ export default class DungeonScene extends Phaser.Scene {
     this.clearCombatText();
 
     this.resetAiMemory();
+    this.resetAiPreview();
+
     st.setHeroDead(false);
     st.setBattleLog("");
     st.closeBattlePrompt?.();
@@ -477,6 +550,8 @@ export default class DungeonScene extends Phaser.Scene {
       candidates.length > 0
         ? Phaser.Utils.Array.GetRandom(candidates)
         : Phaser.Utils.Array.GetRandom(this.dungeonTemplates);
+
+    this.resetAiPreview();
 
     return this.makeDungeonFromTemplate(template);
   }
@@ -660,34 +735,48 @@ export default class DungeonScene extends Phaser.Scene {
     const st = useGameStore.getState();
     const enemy = this.getActiveEnemy();
 
-    if (st.mode !== "TRAINING") {
+    const allowPromptInTraining = st.mode === "TRAINING";
+    const allowPromptInAi =
+      st.mode === "AI_RUN" && !!enemy && (this.inBattleEncounter || this.aiPreviewLocked);
+
+    const shouldAllowPrompt = allowPromptInTraining || allowPromptInAi;
+
+    if (!shouldAllowPrompt) {
       st.closeBattlePrompt?.();
       st.setBattleLog(this.combatMessage || "");
       return;
     }
 
     const shouldStayOpen =
-      ((this.inBattleEncounter && !!enemy) || extras?.keepOpen) && !!enemy;
+      !!enemy &&
+      ((this.inBattleEncounter && !!enemy) || extras?.keepOpen || this.aiPreviewLocked);
 
-    if (shouldStayOpen && enemy) {
-      st.openBattlePrompt?.({
-        enemyName: this.enemyLabelFor(enemy.kind),
-        enemyKind: enemy.kind,
-        enemySprite: this.enemyTextureFor(enemy.kind),
-        heroSprite: "hero",
-        enemyHp: Math.max(0, enemy.hp),
-        enemyMaxHp: enemy.maxHp,
-        heroHp: this.hero.hp,
-        heroMaxHp: HERO_MAX_HP,
-        lastAction: extras?.lastAction ?? null,
-        heroHit: extras?.heroHit ?? false,
-        enemyHit: extras?.enemyHit ?? false,
-        heroDead: extras?.heroDead ?? false,
-        enemyDead: extras?.enemyDead ?? false,
-      });
-    } else {
+    if (!shouldStayOpen || !enemy) {
       st.closeBattlePrompt?.();
+      st.setBattleLog(this.combatMessage || "");
+      return;
     }
+
+    st.openBattlePrompt?.({
+      enemyName: this.enemyLabelFor(enemy.kind),
+      enemyKind: enemy.kind,
+      enemySprite: this.enemyTextureFor(enemy.kind),
+      heroSprite: "hero",
+      enemyHp: Math.max(0, enemy.hp),
+      enemyMaxHp: enemy.maxHp,
+      heroHp: this.hero.hp,
+      heroMaxHp: HERO_MAX_HP,
+      lastAction: extras?.lastAction ?? null,
+      heroHit: extras?.heroHit ?? false,
+      enemyHit: extras?.enemyHit ?? false,
+      heroDead: extras?.heroDead ?? false,
+      enemyDead: extras?.enemyDead ?? false,
+      aiMode: st.mode === "AI_RUN",
+      aiThinking: this.aiPreviewThinking,
+      aiChosenAction: this.aiPreviewAction,
+      aiConfidence: this.aiPreviewConfidence,
+      aiProbs: this.aiPreviewProbs,
+    });
 
     st.setBattleLog(this.combatMessage || "");
   }
@@ -829,7 +918,7 @@ export default class DungeonScene extends Phaser.Scene {
         this.stageIndex += 1;
         this.showCombatText("The next round is harder.");
       }
-
+      
       this.grid = this.makeTemplateDungeon();
       this.healCooldown = 0;
       this.hiddenTurns = 0;
@@ -838,7 +927,9 @@ export default class DungeonScene extends Phaser.Scene {
       this.battleJustStarted = false;
       this.activeEnemyId = null;
       this.resetAiMemory();
+      this.resetAiPreview();
       this.rememberHeroPosition();
+
     }
 
     if (this.hero.hp <= 0) {
@@ -846,6 +937,7 @@ export default class DungeonScene extends Phaser.Scene {
       this.inBattleEncounter = false;
       this.battleJustStarted = false;
       this.activeEnemyId = null;
+      this.resetAiPreview();
       st.setBattleLog("");
       st.closeBattlePrompt?.();
 
@@ -1238,7 +1330,7 @@ export default class DungeonScene extends Phaser.Scene {
     this.healthBarSprite.setTexture(this.healthTextureFor(this.hero.hp));
 
     const centerX = this.scale.width / 2;
-    const topY = -60;
+    const topY = 0;
     const targetWidth = tile * 4.2;
     const naturalWidth = this.healthBarSprite.texture.getSourceImage().width;
     const scale = targetWidth / naturalWidth;
