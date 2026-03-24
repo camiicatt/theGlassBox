@@ -17,10 +17,17 @@ const slides = [
     ],
   },
   {
-    title: "Be Careful What You Teach",
+    title: "Different Choices Teach Different AI",
     body: [
-      "Confidence is not the same as being correct.",
-      "Guide the robot through 5 training rounds, then watch it act on its own.",
+      "You do not have to defeat every monster.",
+      "You can fight, hide, run away, or avoid danger entirely.",
+    ],
+  },
+  {
+    title: "Watch What It Learns",
+    body: [
+      "First, you guide the robot through a training round.",
+      "Then the AI tries a similar dungeon on its own. As the game continues, the dungeons get harder.",
     ],
   },
 ];

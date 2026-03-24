@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "../store/useGameStore";
 import type { Action } from "../store/useGameStore";
 
@@ -20,43 +20,107 @@ function hpPercent(hp: number, maxHp: number) {
   return Math.max(0, Math.min(100, Math.round((hp / Math.max(1, maxHp)) * 100)));
 }
 
+type FxParticle = {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  kind: "heal" | "fight" | "run" | "hide";
+};
+
+function uid() {
+  return Math.random().toString(36).slice(2) + Date.now().toString(36);
+}
+
 export default function OptionBoard() {
   const mode = useGameStore((s) => s.mode);
   const prompt = useGameStore((s) => s.battlePrompt);
   const battleLog = useGameStore((s) => s.battleLog);
   const setPendingAction = useGameStore((s) => s.setPendingAction);
 
-  const [heroAnimTick, setHeroAnimTick] = useState(0);
-  const [enemyAnimTick, setEnemyAnimTick] = useState(0);
+  const [heroFx, setHeroFx] = useState<FxParticle[]>([]);
+  const [enemyFx, setEnemyFx] = useState<FxParticle[]>([]);
+  const [selectedAction, setSelectedAction] = useState<Action | null>(null);
+
+  // These keys force the wrapper div to remount so the CSS animation reliably restarts.
+  const heroMotionKey = useMemo(() => {
+    if (!prompt) return "hero-idle";
+    return [
+      prompt.lastAction ?? "NONE",
+      prompt.enemyHit ? "enemyHit" : "noEnemyHit",
+      prompt.heroDead ? "heroDead" : "heroAlive",
+      prompt.heroHp,
+    ].join("-");
+  }, [prompt?.lastAction, prompt?.enemyHit, prompt?.heroDead, prompt?.heroHp]);
+
+  const enemyMotionKey = useMemo(() => {
+    if (!prompt) return "enemy-idle";
+    return [
+      prompt.heroHit ? "heroHit" : "noHeroHit",
+      prompt.enemyDead ? "enemyDead" : "enemyAlive",
+      prompt.enemyHp,
+    ].join("-");
+  }, [prompt?.heroHit, prompt?.enemyDead, prompt?.enemyHp]);
 
   useEffect(() => {
     if (!prompt) return;
 
     if (prompt.lastAction === "FIGHT") {
-      setHeroAnimTick((n) => n + 1);
+      const id = uid();
+      setEnemyFx((prev) => [
+        ...prev,
+        { id, x: 50, y: 42, text: "⚔", kind: "fight" },
+      ]);
+      window.setTimeout(() => {
+        setEnemyFx((prev) => prev.filter((p) => p.id !== id));
+      }, 520);
     }
 
-    if (prompt.heroHit) {
-      setEnemyAnimTick((n) => n + 1);
+    if (prompt.lastAction === "HEAL") {
+      const particles = Array.from({ length: 6 }, (_, i) => ({
+        id: uid(),
+        x: 28 + (i % 3) * 20,
+        y: 38 + Math.floor(i / 3) * 16,
+        text: "+",
+        kind: "heal" as const,
+      }));
+
+      setHeroFx((prev) => [...prev, ...particles]);
+
+      particles.forEach((p, i) => {
+        window.setTimeout(() => {
+          setHeroFx((prev) => prev.filter((fx) => fx.id !== p.id));
+        }, 820 + i * 35);
+      });
     }
 
-    if (prompt.enemyHit) {
-      setHeroAnimTick((n) => n + 1);
+    if (prompt.lastAction === "RUN") {
+      const id = uid();
+      setHeroFx((prev) => [
+        ...prev,
+        { id, x: 55, y: 45, text: ">>", kind: "run" },
+      ]);
+      window.setTimeout(() => {
+        setHeroFx((prev) => prev.filter((p) => p.id !== id));
+      }, 620);
     }
 
-    if (prompt.enemyDead) {
-      setEnemyAnimTick((n) => n + 1);
-    }
-
-    if (prompt.heroDead) {
-      setHeroAnimTick((n) => n + 1);
+    if (prompt.lastAction === "HIDE") {
+      const id = uid();
+      setHeroFx((prev) => [
+        ...prev,
+        { id, x: 50, y: 42, text: "☁", kind: "hide" },
+      ]);
+      window.setTimeout(() => {
+        setHeroFx((prev) => prev.filter((p) => p.id !== id));
+      }, 680);
     }
   }, [
     prompt?.lastAction,
     prompt?.heroHit,
     prompt?.enemyHit,
-    prompt?.enemyDead,
     prompt?.heroDead,
+    prompt?.enemyDead,
     prompt?.heroHp,
     prompt?.enemyHp,
   ]);
@@ -64,24 +128,33 @@ export default function OptionBoard() {
   if (!prompt || mode !== "TRAINING") return null;
 
   const choose = (a: Action) => {
+    setSelectedAction(a);
     setPendingAction(a);
+
+    window.setTimeout(() => {
+      setSelectedAction((curr) => (curr === a ? null : curr));
+    }, 180);
   };
 
   const heroHpPct = hpPercent(prompt.heroHp, prompt.heroMaxHp);
   const enemyHpPct = hpPercent(prompt.enemyHp, prompt.enemyMaxHp);
 
-  const heroClass = [
-    "battleSprite",
+  // Move the WRAPPER, not the <img>. That makes the animation visible even
+  // if the PNG has transparent padding around the character.
+  const heroFrameClass = [
+    "battleSpriteFrame",
     prompt.lastAction === "FIGHT" ? "heroAttack" : "",
+    prompt.lastAction === "HEAL" ? "heroHealPulse" : "",
+    prompt.lastAction === "HIDE" ? "heroHideFade" : "",
+    prompt.lastAction === "RUN" ? "heroRunStep" : "",
     prompt.enemyHit ? "gotHit" : "",
     prompt.heroDead ? "deadRed" : "",
   ]
     .filter(Boolean)
     .join(" ");
 
-  const enemyClass = [
-    "battleSprite",
-    prompt.heroHit ? "enemyAttack" : "",
+  const enemyFrameClass = [
+    "battleSpriteFrame",
     prompt.heroHit ? "gotHit" : "",
     prompt.enemyDead ? "deadRed" : "",
   ]
@@ -106,13 +179,26 @@ export default function OptionBoard() {
           <div style={fighterCol}>
             <div style={fighterName}>Hero</div>
 
-            <div style={spriteFrameHero} key={`hero-wrap-${heroAnimTick}`}>
+            <div
+              key={heroMotionKey}
+              style={spriteFrameHero}
+              className={heroFrameClass}
+            >
               <img
                 src={spriteUrl(prompt.heroSprite)}
                 alt="Hero"
-                className={heroClass}
                 style={spriteStyle}
               />
+
+              {heroFx.map((fx) => (
+                <div
+                  key={fx.id}
+                  className={`fxParticle ${fx.kind}`}
+                  style={{ left: `${fx.x}%`, top: `${fx.y}%` }}
+                >
+                  {fx.text}
+                </div>
+              ))}
             </div>
 
             <div style={healthPanel}>
@@ -121,12 +207,7 @@ export default function OptionBoard() {
                 {prompt.heroHp}/{prompt.heroMaxHp}
               </div>
               <div style={barTrack}>
-                <div
-                  style={{
-                    ...barFillHero,
-                    width: `${heroHpPct}%`,
-                  }}
-                />
+                <div style={{ ...barFillHero, width: `${heroHpPct}%` }} />
               </div>
             </div>
           </div>
@@ -138,13 +219,26 @@ export default function OptionBoard() {
           <div style={fighterCol}>
             <div style={fighterName}>{prompt.enemyName}</div>
 
-            <div style={spriteFrameEnemy} key={`enemy-wrap-${enemyAnimTick}`}>
+            <div
+              key={enemyMotionKey}
+              style={spriteFrameEnemy}
+              className={enemyFrameClass}
+            >
               <img
                 src={spriteUrl(prompt.enemySprite)}
                 alt={prompt.enemyName}
-                className={enemyClass}
                 style={spriteStyle}
               />
+
+              {enemyFx.map((fx) => (
+                <div
+                  key={fx.id}
+                  className={`fxParticle ${fx.kind}`}
+                  style={{ left: `${fx.x}%`, top: `${fx.y}%` }}
+                >
+                  {fx.text}
+                </div>
+              ))}
             </div>
 
             <div style={healthPanel}>
@@ -153,12 +247,7 @@ export default function OptionBoard() {
                 {prompt.enemyHp}/{prompt.enemyMaxHp}
               </div>
               <div style={barTrack}>
-                <div
-                  style={{
-                    ...barFillEnemy,
-                    width: `${enemyHpPct}%`,
-                  }}
-                />
+                <div style={{ ...barFillEnemy, width: `${enemyHpPct}%` }} />
               </div>
             </div>
           </div>
@@ -172,17 +261,44 @@ export default function OptionBoard() {
         </div>
 
         <div style={buttonGrid}>
-          <button style={btnPrimary} onClick={() => choose("FIGHT")}>
-            Fight
+          <button
+            style={{
+              ...fightBtn,
+              ...(selectedAction === "FIGHT" ? pressedBtn : {}),
+            }}
+            onClick={() => choose("FIGHT")}
+          >
+            ⚔ Fight
           </button>
-          <button style={btn} onClick={() => choose("HIDE")}>
-            Hide
+
+          <button
+            style={{
+              ...hideBtn,
+              ...(selectedAction === "HIDE" ? pressedBtn : {}),
+            }}
+            onClick={() => choose("HIDE")}
+          >
+            👤 Hide
           </button>
-          <button style={btn} onClick={() => choose("HEAL")}>
-            Heal
+
+          <button
+            style={{
+              ...healBtn,
+              ...(selectedAction === "HEAL" ? pressedBtn : {}),
+            }}
+            onClick={() => choose("HEAL")}
+          >
+            ✚ Heal
           </button>
-          <button style={btn} onClick={() => choose("RUN")}>
-            Run
+
+          <button
+            style={{
+              ...runBtn,
+              ...(selectedAction === "RUN" ? pressedBtn : {}),
+            }}
+            onClick={() => choose("RUN")}
+          >
+            ➜ Run
           </button>
         </div>
 
@@ -192,24 +308,29 @@ export default function OptionBoard() {
       </div>
 
       <style>{`
-        .battleSprite {
-          width: 132px;
-          height: 132px;
-          object-fit: contain;
-          image-rendering: pixelated;
+        .battleSpriteFrame {
           will-change: transform, filter, opacity;
+          position: relative;
         }
 
         .heroAttack {
-          animation: heroAttackAnim 260ms ease;
+          animation: heroAttackAnim 480ms cubic-bezier(.2,.8,.2,1);
         }
 
-        .enemyAttack {
-          animation: enemyAttackAnim 260ms ease;
+        .heroHealPulse {
+          animation: heroHealPulseAnim 540ms ease;
+        }
+
+        .heroHideFade {
+          animation: heroHideFadeAnim 480ms ease;
+        }
+
+        .heroRunStep {
+          animation: heroRunStepAnim 380ms ease;
         }
 
         .gotHit {
-          animation: gotHitAnim 220ms ease;
+          animation: gotHitAnim 340ms ease;
         }
 
         .deadRed {
@@ -217,25 +338,82 @@ export default function OptionBoard() {
           opacity: 0.88;
         }
 
-        @keyframes heroAttackAnim {
-          0% { transform: translateX(0) scale(1); }
-          40% { transform: translateX(48px) scale(1.12); }
-          100% { transform: translateX(0) scale(1); }
+        .fxParticle {
+          position: absolute;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          z-index: 5;
+          font-weight: 900;
+          text-shadow: 0 2px 10px rgba(0,0,0,0.45);
+          animation: floatUpFade 900ms ease-out forwards;
         }
 
-        @keyframes enemyAttackAnim {
+        .fxParticle.heal {
+          color: #86efac;
+          font-size: 30px;
+        }
+
+        .fxParticle.fight {
+          color: #fca5a5;
+          font-size: 28px;
+        }
+
+        .fxParticle.run {
+          color: #fde68a;
+          font-size: 24px;
+        }
+
+        .fxParticle.hide {
+          color: #cbd5e1;
+          font-size: 28px;
+        }
+
+        @keyframes heroAttackAnim {
           0% { transform: translateX(0) scale(1); }
-          40% { transform: translateX(-48px) scale(1.12); }
+          35% { transform: translateX(96px) scale(1.2); }
           100% { transform: translateX(0) scale(1); }
         }
 
         @keyframes gotHitAnim {
           0% { transform: translateX(0); }
-          20% { transform: translateX(-8px); }
-          40% { transform: translateX(8px); }
-          60% { transform: translateX(-6px); }
-          80% { transform: translateX(6px); }
+          20% { transform: translateX(-18px); }
+          40% { transform: translateX(18px); }
+          60% { transform: translateX(-12px); }
+          80% { transform: translateX(12px); }
           100% { transform: translateX(0); }
+        }
+
+        @keyframes heroHealPulseAnim {
+          0% { transform: scale(1); filter: brightness(1); }
+          35% { transform: scale(1.09); filter: brightness(1.25); }
+          100% { transform: scale(1); filter: brightness(1); }
+        }
+
+        @keyframes heroHideFadeAnim {
+          0% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(0.95); opacity: 0.45; }
+          100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes heroRunStepAnim {
+          0% { transform: translateX(0) scale(1); }
+          35% { transform: translateX(-28px) scale(1.04); }
+          100% { transform: translateX(0) scale(1); }
+        }
+
+        @keyframes floatUpFade {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, -50%) translateY(10px) scale(0.8);
+          }
+          20% {
+            opacity: 1;
+            transform: translate(-50%, -50%) translateY(0px) scale(1);
+          }
+          100% {
+            opacity: 0;
+            transform: translate(-50%, -50%) translateY(-34px) scale(1.18);
+          }
         }
       `}</style>
     </div>
@@ -312,7 +490,10 @@ const spriteFrameHero: React.CSSProperties = {
   borderRadius: 18,
   display: "grid",
   placeItems: "center",
-  background: "radial-gradient(circle at center, rgba(34,197,94,0.18), rgba(15,23,42,0.05) 70%)",
+  position: "relative",
+  overflow: "hidden",
+  background:
+    "radial-gradient(circle at center, rgba(34,197,94,0.18), rgba(15,23,42,0.05) 70%)",
 };
 
 const spriteFrameEnemy: React.CSSProperties = {
@@ -321,13 +502,17 @@ const spriteFrameEnemy: React.CSSProperties = {
   borderRadius: 18,
   display: "grid",
   placeItems: "center",
-  background: "radial-gradient(circle at center, rgba(239,68,68,0.18), rgba(15,23,42,0.05) 70%)",
+  position: "relative",
+  overflow: "hidden",
+  background:
+    "radial-gradient(circle at center, rgba(239,68,68,0.18), rgba(15,23,42,0.05) 70%)",
 };
 
 const spriteStyle: React.CSSProperties = {
   width: 132,
   height: 132,
   objectFit: "contain",
+  imageRendering: "pixelated",
 };
 
 const vsWrap: React.CSSProperties = {
@@ -408,22 +593,45 @@ const buttonGrid: React.CSSProperties = {
   marginTop: 16,
 };
 
-const btn: React.CSSProperties = {
+const baseActionBtn: React.CSSProperties = {
   padding: "14px 12px",
   borderRadius: 14,
-  border: "1px solid #1f2a44",
-  background: "#0b1226",
-  color: "#e5e7eb",
-  fontWeight: 800,
+  border: "1px solid transparent",
+  color: "white",
+  fontWeight: 900,
   fontSize: 17,
   cursor: "pointer",
+  transition: "transform 120ms ease, filter 120ms ease, box-shadow 120ms ease",
+  boxShadow: "0 8px 18px rgba(0,0,0,0.22)",
 };
 
-const btnPrimary: React.CSSProperties = {
-  ...btn,
-  border: "1px solid #2b3c66",
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-  color: "white",
+const fightBtn: React.CSSProperties = {
+  ...baseActionBtn,
+  background: "linear-gradient(135deg, #ef4444, #b91c1c)",
+  border: "1px solid #f87171",
+};
+
+const hideBtn: React.CSSProperties = {
+  ...baseActionBtn,
+  background: "linear-gradient(135deg, #64748b, #334155)",
+  border: "1px solid #94a3b8",
+};
+
+const healBtn: React.CSSProperties = {
+  ...baseActionBtn,
+  background: "linear-gradient(135deg, #22c55e, #15803d)",
+  border: "1px solid #86efac",
+};
+
+const runBtn: React.CSSProperties = {
+  ...baseActionBtn,
+  background: "linear-gradient(135deg, #f59e0b, #d97706)",
+  border: "1px solid #fcd34d",
+};
+
+const pressedBtn: React.CSSProperties = {
+  transform: "scale(0.97)",
+  filter: "brightness(1.08)",
 };
 
 const footerText: React.CSSProperties = {

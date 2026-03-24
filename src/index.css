@@ -13,3 +13,71 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+.battleSprite {
+  width: 132px;
+  height: 132px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  will-change: transform, filter, opacity;
+  position: relative;
+  z-index: 2;
+}
+
+.heroAttack {
+  animation: heroAttackAnim 320ms cubic-bezier(.2,.8,.2,1);
+}
+
+.gotHit {
+  animation: gotHitAnim 240ms ease;
+}
+
+.heroHealPulse {
+  animation: heroHealPulseAnim 520ms ease;
+}
+
+.heroHideFade {
+  animation: heroHideFadeAnim 480ms ease;
+}
+
+.heroRunStep {
+  animation: heroRunStepAnim 320ms ease;
+}
+
+.deadRed {
+  filter: brightness(0.72) sepia(1) saturate(8) hue-rotate(-35deg);
+  opacity: 0.88;
+}
+
+@keyframes heroAttackAnim {
+  0% { transform: translateX(0) scale(1); }
+  35% { transform: translateX(72px) scale(1.16); }
+  100% { transform: translateX(0) scale(1); }
+}
+
+@keyframes gotHitAnim {
+  0% { transform: translateX(0); }
+  20% { transform: translateX(-14px); }
+  40% { transform: translateX(14px); }
+  60% { transform: translateX(-10px); }
+  80% { transform: translateX(10px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes heroHealPulseAnim {
+  0% { transform: scale(1); filter: brightness(1); }
+  35% { transform: scale(1.08); filter: brightness(1.22); }
+  100% { transform: scale(1); filter: brightness(1); }
+}
+
+@keyframes heroHideFadeAnim {
+  0% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.95); opacity: 0.45; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes heroRunStepAnim {
+  0% { transform: translateX(0) scale(1); }
+  35% { transform: translateX(-24px) scale(1.03); }
+  100% { transform: translateX(0) scale(1); }
+}

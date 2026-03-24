@@ -45,15 +45,3 @@
   filter: brightness(0.75) sepia(1) saturate(8) hue-rotate(-35deg);
   opacity: 0.88;
 }
-
-@keyframes heroAttackAnim {
-  0% { transform: translateX(0) scale(1); }
-  45% { transform: translateX(42px) scale(1.1); }
-  100% { transform: translateX(0) scale(1); }
-}
-
-@keyframes enemyAttackAnim {
-  0% { transform: translateX(0) scale(1); }
-  45% { transform: translateX(-42px) scale(1.1); }
-  100% { transform: translateX(0) scale(1); }
-}
