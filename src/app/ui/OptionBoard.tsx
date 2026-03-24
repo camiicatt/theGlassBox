@@ -179,8 +179,7 @@ export default function OptionBoard() {
 
   const aiChosenAction = prompt.aiChosenAction ?? null;
   const aiThinking = !!prompt.aiThinking;
-  const aiMode = !!prompt.aiMode;
-
+  
   const probs =
     prompt.aiProbs ??
     (isAiMode && prediction?.probs ? (prediction.probs as Partial<Record<Action, number>>) : undefined);

@@ -294,7 +294,7 @@ export default class DungeonScene extends Phaser.Scene {
     const pred = knnPredict(stateVec, st.examples, 7);
     st.setPrediction(pred);
   
-    const chosen = this.chooseLegalAction(pred.probs, pred.confidence);
+    const chosen = this.chooseLegalAction(pred.probs);
   
     if (this.inBattleEncounter && this.getActiveEnemy()) {
       this.startAiBattlePreview(chosen, pred.probs as Partial<Record<Action, number>>, pred.confidence);
@@ -1134,7 +1134,7 @@ export default class DungeonScene extends Phaser.Scene {
     this.syncBattlePrompt({ lastAction: "RUN", keepOpen: false });
   }
 
-  private chooseLegalAction(probs: Record<string, number>, confidence = 0): Action {
+  private chooseLegalAction(probs: Record<string, number>): Action {
     const adjusted = {} as Record<Action, number>;
   
     for (const a of ACTIONS) {
@@ -1547,11 +1547,6 @@ export default class DungeonScene extends Phaser.Scene {
     const usableW = this.scale.width - pad * 2;
     const usableH = this.scale.height - pad * 2;
     return Math.floor(Math.min(usableW / W, usableH / H));
-  }
-
-  private hasTaughtAction(action: Action) {
-    const examples = useGameStore.getState().examples;
-    return examples.some((ex) => ex.action === action);
   }
 
   private getGridOrigin(tile: number) {

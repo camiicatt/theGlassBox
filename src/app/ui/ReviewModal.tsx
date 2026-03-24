@@ -48,8 +48,6 @@ export default function ReviewModal() {
     );
   }
 
-  const isLast = reviewIndex >= reviewMoments.length - 1;
-
   const choose = (a: Action) => {
     addExample({ state: moment.state.slice(), action: a });
   

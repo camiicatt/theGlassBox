@@ -17,18 +17,6 @@ function makeZeroProbs(): Record<Action, number> {
   return probs;
 }
 
-function normalizeProbs(probs: Record<Action, number>) {
-  let total = 0;
-  for (const a of ACTIONS) total += probs[a] ?? 0;
-
-  if (total <= 0) return probs;
-
-  for (const a of ACTIONS) {
-    probs[a] = (probs[a] ?? 0) / total;
-  }
-  return probs;
-}
-
 export function knnPredict(state: number[], examples: Example[], k = 7): Prediction {
   const probs = makeZeroProbs();
 
