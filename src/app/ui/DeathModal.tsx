@@ -1,11 +1,17 @@
 import { useGameStore } from "../store/useGameStore";
+import { createRun, createPlayerStats } from "../../lib/supabaseLogger";
 
 export default function DeathModal() {
   const heroDead = useGameStore((s) => (s as any).heroDead);
   const requestRestart = useGameStore((s) => (s as any).requestRestart);
-
   const resetForNewStudent = useGameStore((s) => s.resetForNewStudent);
   const setStudentId = useGameStore((s) => s.setStudentId);
+  const supabaseSessionId = useGameStore((s) => s.supabaseSessionId);
+  const setSupabaseRunId = useGameStore((s) => s.setSupabaseRunId);
+  const setRunStartTime = useGameStore((s) => s.setRunStartTime);
+  const setSupabasePlayerStatsId = useGameStore((s) => s.setSupabasePlayerStatsId);
+  const setSupabaseAiStatsId = useGameStore((s) => s.setSupabaseAiStatsId);
+  const setSupabaseDungeonId = useGameStore((s) => s.setSupabaseDungeonId);
 
   if (!heroDead) return null;
 
@@ -17,7 +23,23 @@ export default function DeathModal() {
           Teach it what it should do next time, then respawn.
         </div>
 
-        <button style={btnPrimary} onClick={() => requestRestart()}>
+        <button
+          style={btnPrimary}
+          onClick={async () => {
+            setSupabaseAiStatsId(null);
+            setSupabaseDungeonId(null);
+            if (supabaseSessionId !== null) {
+              const runId = await createRun(supabaseSessionId);
+              if (runId !== null) {
+                setSupabaseRunId(runId);
+                setRunStartTime(Date.now());
+                const playerStatsId = await createPlayerStats(runId);
+                if (playerStatsId !== null) setSupabasePlayerStatsId(playerStatsId);
+              }
+            }
+            requestRestart();
+          }}
+        >
           Respawn (keep learning)
         </button>
 

@@ -1,6 +1,7 @@
 import React from "react";
 import { useGameStore } from "../store/useGameStore";
 import type { Action, Mode } from "../store/useGameStore";
+import { closeSession } from "../../lib/supabaseLogger";
 
 const SURVIVAL_ACTIONS: Action[] = ["HEAL", "HIDE", "RUN", "FIGHT"];
 const MOVE_ACTIONS: Action[] = ["UP", "DOWN", "LEFT", "RIGHT"];
@@ -138,6 +139,9 @@ export default function HeroBrainPanel() {
   const studentId = useGameStore((s) => s.studentId);
   const prompt = useGameStore((s) => s.battlePrompt);
   const setPendingAction = useGameStore((s) => s.setPendingAction);
+  const supabaseSessionId = useGameStore((s) => s.supabaseSessionId);
+  const sessionStartTime = useGameStore((s) => s.sessionStartTime);
+  const resetForNewStudent = useGameStore((s) => s.resetForNewStudent);
 
   const probs: Partial<Record<Action, number>> = prediction?.probs ?? {};
   const overallConfidence = clamp01(prediction?.confidence ?? 0);
@@ -213,8 +217,11 @@ export default function HeroBrainPanel() {
 
       <button
         style={buttonStyle}
-        onClick={() => {
-          console.log("Current student:", studentId);
+        onClick={async () => {
+          if (supabaseSessionId !== null && sessionStartTime !== null) {
+            await closeSession(supabaseSessionId, sessionStartTime, 0, 0);
+          }
+          resetForNewStudent();
         }}
       >
         Switch Student

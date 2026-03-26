@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { RunStats } from "../../lib/supabaseLogger";
 
 export type Mode = "BOOT" | "TRAINING" | "AI_RUN" | "REVIEW";
 
@@ -64,6 +65,35 @@ type GameStore = {
   studentId: string | null;
   setStudentId: (id: string | null) => void;
 
+  supabaseSessionId: number | null;
+  setSupabaseSessionId: (id: number | null) => void;
+
+  sessionStartTime: number | null;
+  setSessionStartTime: (t: number | null) => void;
+
+  supabaseRunId: number | null;
+  setSupabaseRunId: (id: number | null) => void;
+
+  runStartTime: number | null;
+  setRunStartTime: (t: number | null) => void;
+
+  supabasePlayerStatsId: number | null;
+  setSupabasePlayerStatsId: (id: number | null) => void;
+
+  supabaseAiStatsId: number | null;
+  setSupabaseAiStatsId: (id: number | null) => void;
+
+  supabaseDungeonId: number | null;
+  setSupabaseDungeonId: (id: number | null) => void;
+
+  playerRunStats: RunStats;
+  incrementPlayerStat: (key: keyof RunStats) => void;
+  resetPlayerRunStats: () => void;
+
+  aiRunStats: RunStats;
+  incrementAiStat: (key: keyof RunStats) => void;
+  resetAiRunStats: () => void;
+
   restartToken: number;
   requestRestart: () => void;
 
@@ -116,6 +146,39 @@ export const useGameStore = create<GameStore>((set, get) => ({
 
   studentId: null,
   setStudentId: (id) => set({ studentId: id }),
+
+  supabaseSessionId: null,
+  setSupabaseSessionId: (id) => set({ supabaseSessionId: id }),
+
+  sessionStartTime: null,
+  setSessionStartTime: (t) => set({ sessionStartTime: t }),
+
+  supabaseRunId: null,
+  setSupabaseRunId: (id) => set({ supabaseRunId: id }),
+
+  runStartTime: null,
+  setRunStartTime: (t) => set({ runStartTime: t }),
+
+  playerRunStats: { numActions: 0, numDungeons: 0, numFight: 0, numHide: 0, numHeal: 0, numRun: 0 },
+  incrementPlayerStat: (key) =>
+    set((s) => ({ playerRunStats: { ...s.playerRunStats, [key]: s.playerRunStats[key] + 1 } })),
+  resetPlayerRunStats: () =>
+    set({ playerRunStats: { numActions: 0, numDungeons: 0, numFight: 0, numHide: 0, numHeal: 0, numRun: 0 } }),
+
+  aiRunStats: { numActions: 0, numDungeons: 0, numFight: 0, numHide: 0, numHeal: 0, numRun: 0 },
+  incrementAiStat: (key) =>
+    set((s) => ({ aiRunStats: { ...s.aiRunStats, [key]: s.aiRunStats[key] + 1 } })),
+  resetAiRunStats: () =>
+    set({ aiRunStats: { numActions: 0, numDungeons: 0, numFight: 0, numHide: 0, numHeal: 0, numRun: 0 } }),
+
+  supabasePlayerStatsId: null,
+  setSupabasePlayerStatsId: (id) => set({ supabasePlayerStatsId: id }),
+
+  supabaseAiStatsId: null,
+  setSupabaseAiStatsId: (id) => set({ supabaseAiStatsId: id }),
+
+  supabaseDungeonId: null,
+  setSupabaseDungeonId: (id) => set({ supabaseDungeonId: id }),
 
   restartToken: 0,
   requestRestart: () => set((s) => ({ restartToken: s.restartToken + 1 })),
@@ -173,6 +236,15 @@ export const useGameStore = create<GameStore>((set, get) => ({
       battleLog: "",
       pendingAction: null,
       heroDead: false,
+      supabaseSessionId: null,
+      sessionStartTime: null,
+      supabaseRunId: null,
+      runStartTime: null,
+      supabasePlayerStatsId: null,
+      supabaseAiStatsId: null,
+      supabaseDungeonId: null,
+      playerRunStats: { numActions: 0, numDungeons: 0, numFight: 0, numHide: 0, numHeal: 0, numRun: 0 },
+      aiRunStats: { numActions: 0, numDungeons: 0, numFight: 0, numHide: 0, numHeal: 0, numRun: 0 },
     }),
 
   saveToLocal: () => {
