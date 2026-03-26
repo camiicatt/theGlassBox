@@ -67,6 +67,8 @@ export default class DungeonScene extends Phaser.Scene {
   private enemySprites = new Map<string, Phaser.GameObjects.Image>();
 
   private lastStepAt = 0;
+  private timerEvent: Phaser.Time.TimerEvent | null = null;
+  private static readonly DUNGEON_TIME = 20;
   private healCooldown = 0;
   private hiddenTurns = 0;
   private invulnTurns = 0;
@@ -266,6 +268,7 @@ export default class DungeonScene extends Phaser.Scene {
     this.heroSprite = this.add.image(0, 0, "hero").setDepth(20).setOrigin(0.5);
 
     this.grid = this.makeTemplateDungeon();
+    this.startDungeonTimer();
     this.resetAiMemory();
     useGameStore.getState().setBattleLog("");
 
@@ -396,12 +399,36 @@ export default class DungeonScene extends Phaser.Scene {
     });
   }
 
+  private startDungeonTimer() {
+    if (this.timerEvent) {
+      this.timerEvent.remove(false);
+      this.timerEvent = null;
+    }
+    useGameStore.getState().setDungeonTimeLeft(DungeonScene.DUNGEON_TIME);
+    this.timerEvent = this.time.addEvent({
+      delay: 1000,
+      repeat: DungeonScene.DUNGEON_TIME - 1,
+      callback: () => {
+        const st = useGameStore.getState();
+        const canTick = st.mode === "TRAINING" && !this.inBattleEncounter && st.battlePrompt === null && !st.heroDead;
+        if (!canTick) return;
+        const next = st.dungeonTimeLeft - 1;
+        st.setDungeonTimeLeft(next);
+        if (next <= 0) {
+          this.hero.hp = 0;
+          this.endOfTurn();
+        }
+      },
+    });
+  }
+
   private fullReset() {
     const st = useGameStore.getState();
 
     this.hero.hp = HERO_MAX_HP;
     this.stageIndex = 0;
     this.grid = this.makeTemplateDungeon();
+    this.startDungeonTimer();
 
     this.healCooldown = 0;
     this.hiddenTurns = 0;
@@ -959,6 +986,7 @@ export default class DungeonScene extends Phaser.Scene {
     const st = useGameStore.getState();
 
     if (this.hero.x === this.goal.x && this.hero.y === this.goal.y) {
+      st.addScore(10);
       if (st.mode === "TRAINING") {
         st.setMode("AI_RUN");
         this.showCombatText(`${this.stageLabel()} training complete. Now the AI tries.`);
@@ -990,6 +1018,7 @@ export default class DungeonScene extends Phaser.Scene {
       }
       
       this.grid = this.makeTemplateDungeon();
+      this.startDungeonTimer();
       this.healCooldown = 0;
       this.hiddenTurns = 0;
       this.invulnTurns = 0;
@@ -1119,6 +1148,7 @@ export default class DungeonScene extends Phaser.Scene {
 
     if (enemy.hp <= 0) {
       enemy.hp = 0;
+      useGameStore.getState().addScore(20);
       this.showCombatText(`You defeated ${this.enemyLabelFor(enemy.kind)}!`, "success");
 
       this.syncBattlePrompt({

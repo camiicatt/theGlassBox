@@ -138,6 +138,13 @@ type GameStore = {
 
   pendingAction: Action | null;
   setPendingAction: (a: Action | null) => void;
+
+  dungeonTimeLeft: number;
+  setDungeonTimeLeft: (n: number) => void;
+
+  score: number;
+  addScore: (n: number) => void;
+  resetScore: () => void;
 };
 
 export const useGameStore = create<GameStore>((set, get) => ({
@@ -222,6 +229,13 @@ export const useGameStore = create<GameStore>((set, get) => ({
   pendingAction: null,
   setPendingAction: (a) => set({ pendingAction: a }),
 
+  dungeonTimeLeft: 60,
+  setDungeonTimeLeft: (n) => set({ dungeonTimeLeft: n }),
+
+  score: 0,
+  addScore: (n) => set((s) => ({ score: s.score + n })),
+  resetScore: () => set({ score: 0 }),
+
   resetForNewStudent: () =>
     set({
       mode: "BOOT",
@@ -236,6 +250,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
       battleLog: "",
       pendingAction: null,
       heroDead: false,
+      score: 0,
       supabaseSessionId: null,
       sessionStartTime: null,
       supabaseRunId: null,
