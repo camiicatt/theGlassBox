@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "../store/useGameStore";
-import { createRun, createPlayerStats, logLeaderboard, fetchLeaderboard } from "../../lib/supabaseLogger";
+import { createRun, createPlayerStats, logLeaderboard, fetchLeaderboard, closeSession } from "../../lib/supabaseLogger";
 import { downloadStudentBackup } from "../../lib/fileBackup";
 
 type LeaderboardEntry = { id: number; player_name: string; score: number };
@@ -18,6 +18,7 @@ export default function DeathModal() {
   const setSupabaseDungeonId = useGameStore((s) => s.setSupabaseDungeonId);
   const studentId = useGameStore((s) => s.studentId);
   const score = useGameStore((s) => s.score);
+  const sessionStartTime = useGameStore((s) => s.sessionStartTime);
 
   const [entries, setEntries] = useState<LeaderboardEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -128,6 +129,9 @@ export default function DeathModal() {
         <button
           style={btn}
           onClick={async () => {
+            if (supabaseSessionId !== null && sessionStartTime !== null) {
+              await closeSession(supabaseSessionId, sessionStartTime, score, 0);
+            }
             if (studentId) await downloadStudentBackup(studentId);
             resetForNewStudent();
             setStudentId(null);

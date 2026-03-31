@@ -37,10 +37,11 @@ export default function NamePage() {
     setStudentId(id);
     loadFromLocal(id);
 
+    const startedAt = Date.now();
     const sessionId = await createSession(cleanFirst, cleanLastInitial);
     if (sessionId !== null) {
       setSupabaseSessionId(sessionId);
-      setSessionStartTime(Date.now());
+      setSessionStartTime(startedAt);
       const runId = await createRun(sessionId);
       if (runId !== null) {
         setSupabaseRunId(runId);
