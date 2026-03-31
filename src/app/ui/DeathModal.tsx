@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "../store/useGameStore";
 import { createRun, createPlayerStats, logLeaderboard, fetchLeaderboard } from "../../lib/supabaseLogger";
+import { downloadStudentBackup } from "../../lib/fileBackup";
 
 type LeaderboardEntry = { id: number; player_name: string; score: number };
 
@@ -126,7 +127,8 @@ export default function DeathModal() {
 
         <button
           style={btn}
-          onClick={() => {
+          onClick={async () => {
+            if (studentId) await downloadStudentBackup(studentId);
             resetForNewStudent();
             setStudentId(null);
           }}

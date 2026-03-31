@@ -1,3 +1,5 @@
+import { trackInsert, trackPatch } from "./fileBackup";
+
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
@@ -33,6 +35,7 @@ async function insert(table: string, row: object): Promise<boolean> {
       console.warn(`[supabase] INSERT ${table} failed:`, res.status, await res.text());
       return false;
     }
+    trackInsert(table, row as Record<string, unknown>);
     return true;
   } catch (err) {
     console.warn(`[supabase] INSERT ${table} error:`, err);
@@ -54,7 +57,9 @@ async function insertReturningId(table: string, row: object): Promise<number | n
       return null;
     }
     const rows = (await res.json()) as { id: number }[];
-    return rows[0]?.id ?? null;
+    const id = rows[0]?.id ?? null;
+    if (id !== null) trackInsert(table, row as Record<string, unknown>, id);
+    return id;
   } catch (err) {
     console.warn(`[supabase] INSERT ${table} (returning) error:`, err);
     return null;
@@ -74,6 +79,7 @@ async function patch(table: string, id: number, updates: object): Promise<boolea
       console.warn(`[supabase] PATCH ${table} failed:`, res.status, await res.text());
       return false;
     }
+    trackPatch(table, id, updates as Record<string, unknown>);
     return true;
   } catch (err) {
     console.warn(`[supabase] PATCH ${table} error:`, err);
@@ -121,7 +127,7 @@ export async function createSession(
     session_started: Date.now(),
     high_score: 0,
     num_runs: 0,
-    session_ended: 0,
+    session_ended: null,
     session_len: 0,
   });
 }
@@ -137,7 +143,7 @@ export async function closeSession(
   numRuns: number
 ): Promise<boolean> {
   return patch("session", sessionId, {
-    session_ended: 1,
+    session_ended: Date.now(),
     session_len: Math.round((Date.now() - startedAt) / 1000),
     high_score: highScore,
     num_runs: numRuns,
@@ -150,7 +156,7 @@ export async function fetchSessions(): Promise<
 > {
   return fetchRows(
     "session",
-    "session_ended=eq.1&select=id,first_name,last_initial,high_score,num_runs"
+    "session_ended=not.is.null&select=id,first_name,last_initial,high_score,num_runs"
   );
 }
 
@@ -164,7 +170,7 @@ export async function createRun(sessionId: number): Promise<number | null> {
   return insertReturningId("run", {
     session_id: sessionId,
     run_started: Date.now(),
-    run_ended: 0,
+    run_ended: null,
     run_len: 0,
     total_actions: 0,
     total_dungeons: 0,
@@ -194,7 +200,7 @@ export async function closeRun(
   }
 ): Promise<boolean> {
   return patch("run", runId, {
-    run_ended: 1,
+    run_ended: Date.now(),
     run_len: Math.round((Date.now() - startedAt) / 1000),
     total_actions: stats.totalActions,
     total_dungeons: stats.totalDungeons,

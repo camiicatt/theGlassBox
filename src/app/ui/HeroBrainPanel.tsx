@@ -2,6 +2,7 @@ import React from "react";
 import { useGameStore } from "../store/useGameStore";
 import type { Action, Mode } from "../store/useGameStore";
 import { closeSession } from "../../lib/supabaseLogger";
+import { downloadStudentBackup } from "../../lib/fileBackup";
 
 const SURVIVAL_ACTIONS: Action[] = ["HEAL", "HIDE", "RUN", "FIGHT"];
 
@@ -41,6 +42,8 @@ export default function HeroBrainPanel() {
   const supabaseSessionId = useGameStore((s) => s.supabaseSessionId);
   const sessionStartTime = useGameStore((s) => s.sessionStartTime);
   const resetForNewStudent = useGameStore((s) => s.resetForNewStudent);
+
+  const studentId = useGameStore((s) => s.studentId);
 
   const survivalCounts: Record<Action, number> = {
     UP: 0,
@@ -185,6 +188,7 @@ export default function HeroBrainPanel() {
         <button
           style={buttonStyle}
           onClick={async () => {
+            if (studentId) await downloadStudentBackup(studentId);
             if (supabaseSessionId !== null && sessionStartTime !== null) {
               await closeSession(supabaseSessionId, sessionStartTime, 0, 0);
             }
@@ -193,6 +197,7 @@ export default function HeroBrainPanel() {
         >
           Switch Student
         </button>
+
       </div>
     </aside>
   );
@@ -232,6 +237,7 @@ const activeTrainingTabStyle: React.CSSProperties = {
   background: "#ffffff",
   boxShadow: "0 0 0 2px #475569 inset",
 };
+
 
 const buttonStyle: React.CSSProperties = {
   width: "100%",

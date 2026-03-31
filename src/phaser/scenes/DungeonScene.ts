@@ -3,13 +3,14 @@ import { encodeNeighborhood, type Tile } from "../../game/stateEncoding";
 import { knnPredict } from "../../ai/knn";
 import { useGameStore } from "../../app/store/useGameStore";
 import type { Action } from "../../app/store/useGameStore";
-import { ACTIONS } from "../../game/actions";
+import { ACTIONS, BATTLE_ACTIONS } from "../../game/actions";
 import {
   closeRun,
   createAiStats,
   createDungeon,
   logAction,
   updateAiStats,
+  updateDungeon,
   updatePlayerStats,
 } from "../../lib/supabaseLogger";
 
@@ -76,6 +77,10 @@ export default class DungeonScene extends Phaser.Scene {
   private initialDungeonCreated = false;
   private dungeonNum = 0;   // increments each new dungeon, resets per run
   private actionNum = 0;    // increments each battle action, resets per dungeon
+  private dungeonFight = 0;
+  private dungeonHide = 0;
+  private dungeonHeal = 0;
+  private dungeonRun = 0;
   private inBattleEncounter = false;
   private battleJustStarted = false;
   private combatMessage = "";
@@ -315,11 +320,14 @@ export default class DungeonScene extends Phaser.Scene {
     const stateVec = st.currentState;
     if (!stateVec) return;
   
-    const pred = knnPredict(stateVec, st.examples, 7);
+    const examplesForPred = this.inBattleEncounter
+      ? st.examples.filter((e) => BATTLE_ACTIONS.includes(e.action as typeof BATTLE_ACTIONS[number]))
+      : st.examples;
+    const pred = knnPredict(stateVec, examplesForPred, 7);
     st.setPrediction(pred);
-  
+
     const chosen = this.chooseLegalAction(pred.probs, pred.confidence);
-  
+
     if (this.inBattleEncounter && this.getActiveEnemy()) {
       this.startAiBattlePreview(chosen, pred.probs as Partial<Record<Action, number>>, pred.confidence);
       return;
@@ -375,6 +383,22 @@ export default class DungeonScene extends Phaser.Scene {
     });
   }
   
+  private flushDungeonStats() {
+    const dungeonId = useGameStore.getState().supabaseDungeonId;
+    if (dungeonId !== null) {
+      updateDungeon(dungeonId, {
+        numFight: this.dungeonFight,
+        numHide: this.dungeonHide,
+        numHeal: this.dungeonHeal,
+        numRun: this.dungeonRun,
+      }).catch(() => {});
+    }
+    this.dungeonFight = 0;
+    this.dungeonHide = 0;
+    this.dungeonHeal = 0;
+    this.dungeonRun = 0;
+  }
+
   private resetAiPreview() {
     this.aiPreviewLocked = false;
     this.aiPreviewAction = null;
@@ -449,6 +473,10 @@ export default class DungeonScene extends Phaser.Scene {
     this.initialDungeonCreated = false;
     this.dungeonNum = 0;
     this.actionNum = 0;
+    this.dungeonFight = 0;
+    this.dungeonHide = 0;
+    this.dungeonHeal = 0;
+    this.dungeonRun = 0;
 
     this.publishStateAndPrediction();
     this.rememberHeroPosition();
@@ -583,14 +611,15 @@ export default class DungeonScene extends Phaser.Scene {
   }
 
   private enemyPlanForKind(kind: EnemyKind) {
+    const hpBonus = Math.max(0, this.dungeonNum - 3);
     switch (kind) {
       case "bigSlime":
-        return { kind, hp: 4, damage: 1, hitChance: 0.65 };
+        return { kind, hp: 4 + hpBonus, damage: 1, hitChance: 0.65 };
       case "spider":
-        return { kind, hp: 3, damage: 1, hitChance: 0.72 };
+        return { kind, hp: 3 + hpBonus, damage: 1, hitChance: 0.72 };
       case "slime":
       default:
-        return { kind, hp: 2, damage: 1, hitChance: 0.7 };
+        return { kind, hp: 2 + hpBonus, damage: 1, hitChance: 0.7 };
     }
   }
 
@@ -871,6 +900,10 @@ export default class DungeonScene extends Phaser.Scene {
         enemy?.hp ?? 0,
         this.actionNum
       ).catch(() => {});
+      if (action === "FIGHT") this.dungeonFight += 1;
+      else if (action === "HIDE") this.dungeonHide += 1;
+      else if (action === "HEAL") this.dungeonHeal += 1;
+      else if (action === "RUN") this.dungeonRun += 1;
       if (st.mode === "TRAINING") {
         st.incrementPlayerStat("numActions");
         st.incrementPlayerStat(
@@ -986,12 +1019,14 @@ export default class DungeonScene extends Phaser.Scene {
     const st = useGameStore.getState();
 
     if (this.hero.x === this.goal.x && this.hero.y === this.goal.y) {
+      this.flushDungeonStats();
       st.addScore(10);
       if (st.mode === "TRAINING") {
+        st.incrementPlayerStat("numDungeons");
         st.setMode("AI_RUN");
         this.showCombatText(`${this.stageLabel()} training complete. Now the AI tries.`);
         // Create AI stats row now that we know the run id, then create the AI's dungeon
-        if (st.supabaseRunId !== null) {
+        if (st.supabaseRunId !== null && st.supabaseAiStatsId === null) {
           createAiStats(st.supabaseRunId).then((aiId) => {
             if (aiId !== null) {
               useGameStore.getState().setSupabaseAiStatsId(aiId);
@@ -1004,6 +1039,7 @@ export default class DungeonScene extends Phaser.Scene {
           }).catch(() => {});
         }
       } else {
+        st.incrementAiStat("numDungeons");
         st.setMode("TRAINING");
         this.stageIndex += 1;
         this.showCombatText("The next round is harder.");
@@ -1032,6 +1068,7 @@ export default class DungeonScene extends Phaser.Scene {
     }
 
     if (this.hero.hp <= 0) {
+      this.flushDungeonStats();
       this.hero.hp = 0;
       this.inBattleEncounter = false;
       this.battleJustStarted = false;
@@ -1050,13 +1087,15 @@ export default class DungeonScene extends Phaser.Scene {
       st.setReviewMoments([...st.reviewMoments, moment]);
       st.setMode("REVIEW");
 
-      if (st.supabaseRunId !== null && st.runStartTime !== null) {
-        const p = st.playerRunStats;
-        const a = st.aiRunStats;
-        const pId = st.supabasePlayerStatsId;
-        const aId = st.supabaseAiStatsId;
-        const runId = st.supabaseRunId;
-        const runStart = st.runStartTime;
+      const freshSt = useGameStore.getState();
+      if (freshSt.supabaseRunId !== null && freshSt.runStartTime !== null) {
+        const p = freshSt.playerRunStats;
+        const a = freshSt.aiRunStats;
+        const pId = freshSt.supabasePlayerStatsId;
+        const aId = freshSt.supabaseAiStatsId;
+        const runId = freshSt.supabaseRunId;
+        const runStart = freshSt.runStartTime;
+        const score = freshSt.score;
         Promise.all([
           pId !== null ? updatePlayerStats(pId, p) : Promise.resolve(false),
           aId !== null ? updateAiStats(aId, a) : Promise.resolve(false),
@@ -1064,15 +1103,15 @@ export default class DungeonScene extends Phaser.Scene {
           closeRun(runId, runStart, {
             totalActions: p.numActions + a.numActions,
             totalDungeons: p.numDungeons + a.numDungeons,
-            totalScore: 0,
+            totalScore: score,
             totalFight: p.numFight + a.numFight,
             totalHide: p.numHide + a.numHide,
             totalHeal: p.numHeal + a.numHeal,
             totalRun: p.numRun + a.numRun,
           }).catch(() => {});
         }).catch(() => {});
-        st.resetPlayerRunStats();
-        st.resetAiRunStats();
+        freshSt.resetPlayerRunStats();
+        freshSt.resetAiRunStats();
       }
 
       st.setHeroDead(true);
@@ -1438,7 +1477,10 @@ export default class DungeonScene extends Phaser.Scene {
 
     store.setCurrentState(stateVec);
 
-    const pred = knnPredict(stateVec, store.examples, 7);
+    const examplesForPred = this.inBattleEncounter
+      ? store.examples.filter((e) => e.action === "FIGHT" || e.action === "HIDE" || e.action === "HEAL" || e.action === "RUN")
+      : store.examples;
+    const pred = knnPredict(stateVec, examplesForPred, 7);
     store.setPrediction(pred);
   }
 
