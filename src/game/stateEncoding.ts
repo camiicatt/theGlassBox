@@ -27,13 +27,14 @@ export function encodeNeighborhood(
 
     
   
-    // extra features (normalized)
-    vec.push(heroHp01);                 // 0..1
-    vec.push(Math.min(1, healCd / 3));  // 0..1
-    vec.push(Math.min(1, hiddenTurns / 2)); // 0..1
-    vec.push(nearestEnemyHp01);         // 0..1
-  
-    return vec; // length 29 now
+    // extra features — health scaled ×3 to match grid tile range (0–3)
+    // so health differences carry similar weight to tile differences in KNN
+    vec.push(heroHp01 * 3);                      // 0..3
+    vec.push(Math.min(1, healCd / 3));            // 0..1  (cooldown, unscaled)
+    vec.push(Math.min(1, hiddenTurns / 2));        // 0..1  (hidden, unscaled)
+    vec.push(nearestEnemyHp01 * 3);              // 0..3
+
+    return vec; // length 29
   }
 
   
