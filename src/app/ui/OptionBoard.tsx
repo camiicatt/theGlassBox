@@ -182,9 +182,10 @@ export default function OptionBoard() {
   const aiChosenAction = prompt.aiChosenAction ?? null;
   const aiThinking = !!prompt.aiThinking;
 
-  const probs =
-    prompt.aiProbs ??
-    (isAiMode && prediction?.probs ? (prediction.probs as Partial<Record<Action, number>>) : undefined);
+  const probs = prediction?.probs as Partial<Record<Action, number>> | undefined;
+
+    console.log("prediction:", prediction?.probs);
+    console.log("prompt.aiProbs:", prompt.aiProbs);
 
   const heroFrameClass = [
     "battleSpriteFrame",
@@ -351,7 +352,7 @@ export default function OptionBoard() {
               >
                 <div style={actionTitle}>{actionLabel(action)}</div>
 
-                {isAiMode && (
+                {isAiMode && probs && (
                   <>
                     <div style={confidenceText}>{pct}% confidence</div>
                     <div style={miniTrack}>

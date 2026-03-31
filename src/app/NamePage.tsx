@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useGameStore } from "./store/useGameStore";
-import { logStudentStart } from "../lib/supabaseLogger";
+import { createSession, createRun, createPlayerStats } from "../lib/supabaseLogger";
 
 function makeStudentId(first: string, lastInitial: string) {
   const f = first.trim().toLowerCase().replace(/[^a-z]/g, "");
@@ -13,6 +13,11 @@ export default function NamePage() {
   const setStudentId = useGameStore((s) => s.setStudentId);
   const resetForNewStudent = useGameStore((s) => s.resetForNewStudent);
   const loadFromLocal = useGameStore((s) => s.loadFromLocal);
+  const setSupabaseSessionId = useGameStore((s) => s.setSupabaseSessionId);
+  const setSessionStartTime = useGameStore((s) => s.setSessionStartTime);
+  const setSupabaseRunId = useGameStore((s) => s.setSupabaseRunId);
+  const setRunStartTime = useGameStore((s) => s.setRunStartTime);
+  const setSupabasePlayerStatsId = useGameStore((s) => s.setSupabasePlayerStatsId);
 
   const [first, setFirst] = useState("");
   const [lastInitial, setLastInitial] = useState("");
@@ -27,20 +32,25 @@ export default function NamePage() {
     const cleanFirst = first.trim();
     const cleanLastInitial = lastInitial.trim().slice(0, 1).toUpperCase();
 
-    const didLog = await logStudentStart({
-      studentId: id,
-      firstName: cleanFirst,
-      lastInitial: cleanLastInitial,
-      startedAt: new Date().toISOString(),
-    });
-
-    if (!didLog) {
-      setSaveError("Could not save start event to Supabase. Check table/policies.");
-    }
-
+    // Reset and start the game immediately — Supabase IDs are set async afterward
     resetForNewStudent();
     setStudentId(id);
     loadFromLocal(id);
+
+    const sessionId = await createSession(cleanFirst, cleanLastInitial);
+    if (sessionId !== null) {
+      setSupabaseSessionId(sessionId);
+      setSessionStartTime(Date.now());
+      const runId = await createRun(sessionId);
+      if (runId !== null) {
+        setSupabaseRunId(runId);
+        setRunStartTime(Date.now());
+        const playerStatsId = await createPlayerStats(runId);
+        if (playerStatsId !== null) setSupabasePlayerStatsId(playerStatsId);
+      }
+    } else {
+      setSaveError("Could not save session to Supabase. Check table/policies.");
+    }
   };
 
   return (
