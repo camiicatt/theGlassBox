@@ -1,7 +1,7 @@
-import React from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useGameStore } from "../store/useGameStore";
 import type { Action, Mode } from "../store/useGameStore";
-import { closeSession } from "../../lib/supabaseLogger";
+import { closeSession, closeRun, createRun, createPlayerStats } from "../../lib/supabaseLogger";
 import { downloadStudentBackup } from "../../lib/fileBackup";
 
 const SURVIVAL_ACTIONS: Action[] = ["HEAL", "HIDE", "RUN", "FIGHT"];
@@ -42,8 +42,54 @@ export default function HeroBrainPanel() {
   const supabaseSessionId = useGameStore((s) => s.supabaseSessionId);
   const sessionStartTime = useGameStore((s) => s.sessionStartTime);
   const resetForNewStudent = useGameStore((s) => s.resetForNewStudent);
+  const supabaseRunId = useGameStore((s) => s.supabaseRunId);
+  const runStartTime = useGameStore((s) => s.runStartTime);
+  const playerRunStats = useGameStore((s) => s.playerRunStats);
+  const aiRunStats = useGameStore((s) => s.aiRunStats);
+  const setSupabaseRunId = useGameStore((s) => s.setSupabaseRunId);
+  const setRunStartTime = useGameStore((s) => s.setRunStartTime);
+  const setSupabasePlayerStatsId = useGameStore((s) => s.setSupabasePlayerStatsId);
+  const setSupabaseAiStatsId = useGameStore((s) => s.setSupabaseAiStatsId);
+  const setSupabaseDungeonId = useGameStore((s) => s.setSupabaseDungeonId);
+  const resetPlayerRunStats = useGameStore((s) => s.resetPlayerRunStats);
+  const resetAiRunStats = useGameStore((s) => s.resetAiRunStats);
+  const clearExamples = useGameStore((s) => s.clearExamples);
+  const resetScore = useGameStore((s) => s.resetScore);
+  const requestRestart = useGameStore((s) => (s as any).requestRestart);
 
   const studentId = useGameStore((s) => s.studentId);
+  const supabaseDungeonId = useGameStore((s) => s.supabaseDungeonId);
+
+  const [trainingOverrideUsed, setTrainingOverrideUsed] = useState(false);
+  const [trainingSecondsLeft, setTrainingSecondsLeft] = useState(0);
+  const overrideTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Reset the one-use override whenever a new dungeon starts
+  useEffect(() => {
+    setTrainingOverrideUsed(false);
+  }, [supabaseDungeonId]);
+
+  // Clean up timer on unmount
+  useEffect(() => () => { if (overrideTimerRef.current) clearInterval(overrideTimerRef.current); }, []);
+
+  function startTrainingOverride() {
+    if (trainingOverrideUsed) return;
+    setTrainingOverrideUsed(true);
+    setMode("TRAINING");
+    setTrainingSecondsLeft(5);
+
+    let remaining = 5;
+    overrideTimerRef.current = setInterval(() => {
+      remaining -= 1;
+      setTrainingSecondsLeft(remaining);
+      if (remaining <= 0) {
+        clearInterval(overrideTimerRef.current!);
+        overrideTimerRef.current = null;
+        setTrainingSecondsLeft(0);
+        setMode("AI_RUN");
+      }
+    }, 1000);
+  }
 
   const survivalCounts: Record<Action, number> = {
     UP: 0,
@@ -173,10 +219,20 @@ export default function HeroBrainPanel() {
       <div style={{ marginTop: "auto", paddingTop: 16, display: "flex", flexDirection: "column", gap: 8 }}>
         <div style={{ display: "flex", gap: 8 }}>
           <button
-            style={mode === "TRAINING" ? activeTrainingTabStyle : trainingTabStyle}
-            onClick={() => setMode("TRAINING")}
+            style={{
+              ...(mode === "TRAINING" ? activeTrainingTabStyle : trainingTabStyle),
+              ...(mode === "AI_RUN" && trainingOverrideUsed ? { opacity: 0.4, cursor: "not-allowed" } : {}),
+            }}
+            onClick={() => {
+              if (mode === "AI_RUN") {
+                startTrainingOverride();
+              } else {
+                setMode("TRAINING");
+              }
+            }}
+            disabled={mode === "AI_RUN" && trainingOverrideUsed}
           >
-            Training
+            {trainingSecondsLeft > 0 ? `Training (${trainingSecondsLeft}s)` : "Training"}
           </button>
           <button
             style={mode === "AI_RUN" ? activeTabStyle : tabStyle}
@@ -185,6 +241,44 @@ export default function HeroBrainPanel() {
             Run AI
           </button>
         </div>
+        <button
+          style={buttonStyle}
+          onClick={async () => {
+            if (supabaseRunId !== null && runStartTime !== null) {
+              await closeRun(supabaseRunId, runStartTime, {
+                totalActions: playerRunStats.numActions + aiRunStats.numActions,
+                totalDungeons: playerRunStats.numDungeons + aiRunStats.numDungeons,
+                totalScore: score,
+                totalFight: playerRunStats.numFight + aiRunStats.numFight,
+                totalHide: playerRunStats.numHide + aiRunStats.numHide,
+                totalHeal: playerRunStats.numHeal + aiRunStats.numHeal,
+                totalRun: playerRunStats.numRun + aiRunStats.numRun,
+              });
+            }
+            resetPlayerRunStats();
+            resetAiRunStats();
+            resetScore();
+            clearExamples();
+            setSupabaseAiStatsId(null);
+            setSupabaseDungeonId(null);
+            setSupabaseRunId(null);
+            setRunStartTime(null);
+            setSupabasePlayerStatsId(null);
+            if (supabaseSessionId !== null) {
+              const runId = await createRun(supabaseSessionId);
+              if (runId !== null) {
+                setSupabaseRunId(runId);
+                setRunStartTime(Date.now());
+                const playerStatsId = await createPlayerStats(runId);
+                if (playerStatsId !== null) setSupabasePlayerStatsId(playerStatsId);
+              }
+            }
+            setMode("TRAINING");
+            requestRestart();
+          }}
+        >
+          Reset Run
+        </button>
         <button
           style={buttonStyle}
           onClick={async () => {
