@@ -612,14 +612,15 @@ export default class DungeonScene extends Phaser.Scene {
 
   private enemyPlanForKind(kind: EnemyKind) {
     const hpBonus = Math.max(0, this.dungeonNum - 3);
+    const damage = this.dungeonNum > 5 ? (Math.random() < 0.5 ? 2 : 3) : 1;
     switch (kind) {
       case "bigSlime":
-        return { kind, hp: 4 + hpBonus, damage: 1, hitChance: 0.65 };
+        return { kind, hp: 4 + hpBonus, damage, hitChance: 0.65 };
       case "spider":
-        return { kind, hp: 3 + hpBonus, damage: 1, hitChance: 0.72 };
+        return { kind, hp: 3 + hpBonus, damage, hitChance: 0.72 };
       case "slime":
       default:
-        return { kind, hp: 2 + hpBonus, damage: 1, hitChance: 0.7 };
+        return { kind, hp: 2 + hpBonus, damage, hitChance: 0.7 };
     }
   }
 
@@ -893,12 +894,20 @@ export default class DungeonScene extends Phaser.Scene {
     if (isBattleAction && st.supabaseDungeonId !== null) {
       const enemy = this.getActiveEnemy();
       this.actionNum += 1;
+      const aiProbs = st.mode === "AI_RUN" ? st.prediction?.probs : null;
+      const confidences = aiProbs ? {
+        fight: Math.round((aiProbs["FIGHT"] ?? 0) * 100),
+        hide:  Math.round((aiProbs["HIDE"]  ?? 0) * 100),
+        heal:  Math.round((aiProbs["HEAL"]  ?? 0) * 100),
+        run:   Math.round((aiProbs["RUN"]   ?? 0) * 100),
+      } : null;
       logAction(
         st.supabaseDungeonId,
         { fight: action === "FIGHT", hide: action === "HIDE", heal: action === "HEAL", run: action === "RUN" },
         this.hero.hp,
         enemy?.hp ?? 0,
-        this.actionNum
+        this.actionNum,
+        confidences
       ).catch(() => {});
       if (action === "FIGHT") this.dungeonFight += 1;
       else if (action === "HIDE") this.dungeonHide += 1;

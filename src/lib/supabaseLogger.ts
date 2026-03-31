@@ -357,13 +357,15 @@ export async function fetchDungeonsByAi(
 /**
  * Logs a single battle action inside a dungeon.
  * Exactly one of fight/hide/heal/run should be true.
+ * confidences – per-action KNN probabilities scaled 0–100 (AI mode only; omit for manual actions).
  */
 export async function logAction(
   dungeonId: number,
   action: { fight?: boolean; hide?: boolean; heal?: boolean; run?: boolean },
   health: number,
   enemyHealth: number,
-  num: number
+  num: number,
+  confidences?: { fight?: number; hide?: number; heal?: number; run?: number }
 ): Promise<boolean> {
   return insert("action", {
     dungeon_id: dungeonId,
@@ -374,6 +376,10 @@ export async function logAction(
     heal: action.heal ?? false,
     run: action.run ?? false,
     num,
+    fight_confidence: confidences?.fight ?? null,
+    hide_confidence: confidences?.hide ?? null,
+    heal_confidence: confidences?.heal ?? null,
+    run_confidence: confidences?.run ?? null,
   });
 }
 
@@ -389,11 +395,15 @@ export async function fetchActions(
     run: boolean;
     health: number;
     enemy_health: number;
+    fight_confidence: number | null;
+    hide_confidence: number | null;
+    heal_confidence: number | null;
+    run_confidence: number | null;
   }[]
 > {
   return fetchRows(
     "action",
-    `dungeon_id=eq.${dungeonId}&select=id,fight,hide,heal,run,health,enemy_health`
+    `dungeon_id=eq.${dungeonId}&select=id,fight,hide,heal,run,health,enemy_health,fight_confidence,hide_confidence,heal_confidence,run_confidence`
   );
 }
 
