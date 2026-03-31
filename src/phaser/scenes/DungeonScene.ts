@@ -340,7 +340,7 @@ console.log("slime texture", slimeTex);
     const pred = knnPredict(stateVec, examplesForPred, 7);
     st.setPrediction(pred);
 
-    const chosen = this.chooseLegalAction(pred.probs, pred.confidence);
+    const chosen = this.chooseLegalAction(pred.probs);
 
     if (this.inBattleEncounter && this.getActiveEnemy()) {
       this.startAiBattlePreview(chosen, pred.probs as Partial<Record<Action, number>>, pred.confidence);
@@ -921,7 +921,7 @@ console.log("slime texture", slimeTex);
         this.hero.hp,
         enemy?.hp ?? 0,
         this.actionNum,
-        confidences
+        confidences ?? undefined
       ).catch(() => {});
       if (action === "FIGHT") this.dungeonFight += 1;
       else if (action === "HIDE") this.dungeonHide += 1;
