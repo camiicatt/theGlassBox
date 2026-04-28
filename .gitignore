@@ -41,4 +41,7 @@ out/
 *.pkl
 *.sqlite
 *.db
+.env/
+.env
+.env.*
 EOF
