@@ -1,7 +1,15 @@
 # The Glass Box
 
+<<<<<<< HEAD
 An RPG dungeon crawler that teaches kids how machine learning works — by letting
 the game's AI learn to play *like them*, using a model you can actually see inside.
+=======
+Welome to The Glass Hero, a website designed to teach middle schools how ML works. 
+
+Please feel free to use the active link to learn! 
+
+This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+>>>>>>> 205d93949344d792d4ab40114629e400a68fa58d
 
 The child plays a hero through a dungeon. Every move they make becomes a labeled
 training example, and an AI hero learns to imitate their playstyle. The twist is
@@ -32,6 +40,7 @@ that drove any decision. That interpretability is the whole point, and the name.
 - **Zustand** — game and model state
 - **Supabase** — play-session logging and persistence
 
+<<<<<<< HEAD
 ## Run it locally
 
 ```bash
@@ -58,3 +67,7 @@ src/
   app/                 React pages and UI (incl. HeroBrainPanel)
   lib/                 Supabase logging, CSV export, backups
 ```
+=======
+
+>>>>>>> cami-from-zander
+>>>>>>> 205d93949344d792d4ab40114629e400a68fa58d

@@ -47,4 +47,8 @@ jobs:
     needs: build
     steps:
       - id: deployment
+<<<<<<< HEAD
         uses: actions/deploy-pages@v4
+=======
+        uses: actions/deploy-pages@v4
+>>>>>>> 205d93949344d792d4ab40114629e400a68fa58d
