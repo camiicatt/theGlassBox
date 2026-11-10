@@ -53,8 +53,8 @@ export default function DeathModal() {
   return (
     <div style={overlay}>
       <div style={card}>
-        <div style={{ fontSize: 22, fontWeight: 900, marginBottom: 4 }}>💀 Game Over</div>
-        <div style={{ fontSize: 14, color: "#94a3b8", marginBottom: 16 }}>
+        <div style={{ fontFamily: `"Cinzel", "Trajan Pro", Georgia, serif`, fontSize: 24, fontWeight: 900, letterSpacing: 1, color: "#e2503f", textShadow: "0 0 16px rgba(200,55,40,0.4)", marginBottom: 4 }}>💀 Game Over</div>
+        <div style={{ fontSize: 14, color: "#b3aaa2", marginBottom: 16 }}>
           {submitted && studentId
             ? `${studentId} — ${score} pts${playerRank > 0 ? ` · Rank #${playerRank}` : ""}`
             : "Your score has been recorded."}
@@ -85,14 +85,14 @@ export default function DeathModal() {
                     <tr
                       key={entry.id}
                       style={{
-                        background: isMe ? "rgba(37,99,235,0.18)" : i % 2 === 0 ? "rgba(255,255,255,0.03)" : "transparent",
+                        background: isMe ? "rgba(155,45,45,0.25)" : i % 2 === 0 ? "rgba(226,80,63,0.05)" : "transparent",
                         borderRadius: 6,
                       }}
                     >
                       <td style={{ ...td, color: i === 0 ? "#facc15" : i === 1 ? "#94a3b8" : i === 2 ? "#b45309" : "#475569", fontWeight: 800 }}>
                         {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                       </td>
-                      <td style={{ ...td, fontWeight: isMe ? 800 : 500, color: isMe ? "#93c5fd" : "#e5e7eb" }}>
+                      <td style={{ ...td, fontWeight: isMe ? 800 : 500, color: isMe ? "#e2503f" : "#e7ddd5" }}>
                         {entry.player_name}{isMe ? " ← you" : ""}
                       </td>
                       <td style={{ ...td, textAlign: "right", fontWeight: 700, color: "#f8fafc" }}>
@@ -154,19 +154,23 @@ const overlay: React.CSSProperties = {
   zIndex: 999,
 };
 
+const DUNGEON_DISPLAY = `"Cinzel", "Trajan Pro", Georgia, serif`;
+
 const card: React.CSSProperties = {
   width: 460,
   maxWidth: "95vw",
   padding: 20,
   borderRadius: 16,
-  background: "linear-gradient(135deg, #0b1020, #111a33)",
-  border: "1px solid #1f2a44",
-  color: "#e5e7eb",
+  background:
+    "radial-gradient(130% 90% at 50% 0%, #282321 0%, #1b1816 45%, #120f0e 100%)",
+  border: "2px solid #9b2d2d",
+  boxShadow: "0 0 24px rgba(155,45,45,0.3), inset 0 1px 0 rgba(226,80,63,0.10)",
+  color: "#e7ddd5",
 };
 
 const tableWrap: React.CSSProperties = {
-  background: "#070e1f",
-  border: "1px solid #1e293b",
+  background: "rgba(10,6,3,0.6)",
+  border: "1px solid rgba(148,120,114,0.4)",
   borderRadius: 10,
   overflow: "hidden",
   marginBottom: 4,
@@ -177,7 +181,7 @@ const tableWrap: React.CSSProperties = {
 const th: React.CSSProperties = {
   padding: "8px 12px",
   fontWeight: 700,
-  borderBottom: "1px solid #1e293b",
+  borderBottom: "1px solid rgba(148,120,114,0.4)",
   textAlign: "center",
 };
 
@@ -190,19 +194,22 @@ const btnBase: React.CSSProperties = {
   width: "100%",
   marginTop: 10,
   padding: "12px 12px",
-  borderRadius: 14,
-  border: "1px solid #1f2a44",
-  background: "#0b1226",
-  color: "#e5e7eb",
-  fontWeight: 900,
+  borderRadius: 10,
+  border: "1px solid rgba(148,120,114,0.45)",
+  background: "rgba(20,14,9,0.6)",
+  color: "#e7ddd5",
+  fontFamily: DUNGEON_DISPLAY,
+  fontWeight: 700,
+  letterSpacing: 0.4,
   cursor: "pointer",
 };
 
 const btnPrimary: React.CSSProperties = {
   ...btnBase,
-  border: "1px solid #2b3c66",
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
-  color: "white",
+  border: "1px solid rgba(0,0,0,0.45)",
+  background: "linear-gradient(180deg, #c0392b, #7f1d16)",
+  color: "#f6e7e2",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2)",
 };
 
 const btn: React.CSSProperties = btnBase;

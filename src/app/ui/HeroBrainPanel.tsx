@@ -11,7 +11,7 @@ const SURVIVAL_ACTIONS: Action[] = ["HEAL", "HIDE", "RUN", "FIGHT"];
 function confidenceColor(value: number) {
   if (value >= 0.8) return "#22c55e";
   if (value >= 0.6) return "#84cc16";
-  if (value >= 0.4) return "#eab308";
+  if (value >= 0.4) return "#e0822e";
   if (value >= 0.2) return "#f97316";
   return "#ef4444";
 }
@@ -128,10 +128,13 @@ export default function HeroBrainPanel() {
       style={{
         width: 320,
         minWidth: 320,
-        background: "#020817",
-        color: "#f8fafc",
-        border: "1px solid #1e293b",
-        borderRadius: 18,
+        background:
+          "radial-gradient(130% 70% at 50% 0%, #232120 0%, #181614 55%, #100e0d 100%)",
+        color: "#e7ddd5",
+        border: "2px solid #9b2d2d",
+        borderRadius: 16,
+        boxShadow:
+          "0 0 22px rgba(155,45,45,0.22), inset 0 1px 0 rgba(226,80,63,0.10)",
         padding: 16,
         display: "flex",
         flexDirection: "column",
@@ -145,10 +148,10 @@ export default function HeroBrainPanel() {
           marginBottom: 12,
         }}
       >
-        <div style={{ fontSize: 16, fontWeight: 800, letterSpacing: 0.3 }}>
+        <div style={{ fontFamily: `"Cinzel", "Trajan Pro", Georgia, serif`, fontSize: 17, fontWeight: 900, letterSpacing: 1, color: "#e2503f", textShadow: "0 0 14px rgba(200,55,40,0.4)" }}>
           HERO BRAIN
         </div>
-        <div style={{ fontSize: 12, color: "#cbd5e1" }}>
+        <div style={{ fontSize: 12, color: "#b3aaa2" }}>
           Mode: {modeLabel(mode)}
         </div>
       </div>
@@ -158,22 +161,22 @@ export default function HeroBrainPanel() {
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
-          background: dungeonTimeLeft <= 10 ? "#7f1d1d" : "#0f172a",
-          border: `1px solid ${dungeonTimeLeft <= 10 ? "#ef4444" : "#22304a"}`,
+          background: dungeonTimeLeft <= 10 ? "#7f1d1d" : "rgba(20,14,9,0.6)",
+          border: `1px solid ${dungeonTimeLeft <= 10 ? "#ef4444" : "rgba(148,120,114,0.45)"}`,
           borderRadius: 8,
           padding: "8px 12px",
           marginBottom: 16,
         }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>⏱ Time Left</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: "#b3aaa2" }}>⏱ Time Left</span>
           <span style={{ fontSize: 22, fontWeight: 900, color: dungeonTimeLeft <= 10 ? "#ef4444" : "#f8fafc" }}>
             {dungeonTimeLeft}s
           </span>
         </div>
       )}
 
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#0f172a", border: "1px solid #22304a", borderRadius: 8, padding: "8px 12px", marginBottom: 16 }}>
-        <span style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>⭐ Score</span>
-        <span style={{ fontSize: 22, fontWeight: 900, color: "#f8fafc" }}>{score}</span>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "rgba(20,14,9,0.6)", border: "1px solid rgba(148,120,114,0.45)", borderRadius: 8, padding: "8px 12px", marginBottom: 16 }}>
+        <span style={{ fontSize: 13, fontWeight: 700, color: "#b3aaa2" }}>⭐ Score</span>
+        <span style={{ fontSize: 22, fontWeight: 900, color: "#e2503f" }}>{score}</span>
       </div>
 
       <div style={sectionTitleStyle}>What you taught</div>
@@ -297,27 +300,35 @@ export default function HeroBrainPanel() {
   );
 }
 
+const DUNGEON_DISPLAY = `"Cinzel", "Trajan Pro", Georgia, serif`;
+
 const sectionTitleStyle: React.CSSProperties = {
+  fontFamily: DUNGEON_DISPLAY,
   fontSize: 13,
-  fontWeight: 800,
+  fontWeight: 700,
+  letterSpacing: 0.6,
+  textTransform: "uppercase",
   marginBottom: 8,
-  color: "#f8fafc",
+  color: "#e2503f",
 };
 
 const tabStyle: React.CSSProperties = {
-  background: "#e5e7eb",
-  color: "#111827",
-  border: "none",
-  borderRadius: 4,
+  background: "rgba(20,14,9,0.6)",
+  color: "#e7ddd5",
+  border: "1px solid rgba(155,45,45,0.6)",
+  borderRadius: 6,
   padding: "6px 10px",
+  fontFamily: DUNGEON_DISPLAY,
   fontWeight: 700,
   cursor: "pointer",
 };
 
 const activeTabStyle: React.CSSProperties = {
   ...tabStyle,
-  background: "#ffffff",
-  boxShadow: "0 0 0 2px #475569 inset",
+  background: "linear-gradient(180deg, #c0392b, #7f1d16)",
+  color: "#f6e7e2",
+  border: "1px solid rgba(0,0,0,0.45)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2)",
 };
 
 const trainingTabStyle: React.CSSProperties = {
@@ -327,19 +338,22 @@ const trainingTabStyle: React.CSSProperties = {
 };
 
 const activeTrainingTabStyle: React.CSSProperties = {
-  ...trainingTabStyle,
-  background: "#ffffff",
-  boxShadow: "0 0 0 2px #475569 inset",
+  ...activeTabStyle,
+  padding: "9px 16px",
+  fontSize: 14,
 };
 
 
 const buttonStyle: React.CSSProperties = {
   width: "100%",
-  background: "#e5e7eb",
-  color: "#111827",
-  border: "none",
-  borderRadius: 4,
-  padding: "6px 10px",
+  background: "linear-gradient(180deg, #c0392b, #7f1d16)",
+  color: "#f6e7e2",
+  border: "1px solid rgba(0,0,0,0.45)",
+  borderRadius: 8,
+  padding: "8px 10px",
+  fontFamily: DUNGEON_DISPLAY,
   fontWeight: 700,
+  letterSpacing: 0.4,
   cursor: "pointer",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.2)",
 };

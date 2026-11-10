@@ -64,7 +64,7 @@ export default function IntroModal() {
               key={i}
               style={{
                 ...dot,
-                background: i === index ? "#60a5fa" : "#334155",
+                background: i === index ? "#e2503f" : "#5c2626",
               }}
             />
           ))}
@@ -99,6 +99,8 @@ export default function IntroModal() {
   );
 }
 
+const DUNGEON_DISPLAY = `"Cinzel", "Trajan Pro", Georgia, serif`;
+
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
@@ -106,36 +108,43 @@ const overlay: React.CSSProperties = {
   display: "grid",
   placeItems: "center",
   background:
-    "radial-gradient(circle at top, rgba(37,99,235,0.18), transparent 35%), linear-gradient(180deg, #020617 0%, #0f172a 100%)",
+    "radial-gradient(circle at top, rgba(155,45,45,0.22), transparent 40%), linear-gradient(180deg, #0a0909 0%, #100e0d 100%)",
 };
 
 const card: React.CSSProperties = {
   width: 720,
   maxWidth: "calc(100vw - 32px)",
   minHeight: 360,
-  borderRadius: 24,
-  border: "1px solid #1e293b",
-  background: "linear-gradient(135deg, #0b1120, #111827)",
-  boxShadow: "0 24px 80px rgba(0,0,0,0.45)",
+  borderRadius: 18,
+  border: "2px solid #9b2d2d",
+  background:
+    "radial-gradient(130% 90% at 50% 0%, #282321 0%, #1b1816 45%, #120f0e 100%)",
+  boxShadow:
+    "0 24px 80px rgba(0,0,0,0.6), 0 0 22px rgba(155,45,45,0.3), inset 0 1px 0 rgba(226,80,63,0.10)",
   padding: 32,
-  color: "#e5e7eb",
+  color: "#e7ddd5",
   display: "flex",
   flexDirection: "column",
   justifyContent: "space-between",
 };
 
 const eyebrow: React.CSSProperties = {
+  fontFamily: DUNGEON_DISPLAY,
   fontSize: 12,
-  letterSpacing: 1.5,
-  fontWeight: 800,
-  color: "#93c5fd",
+  letterSpacing: 2,
+  fontWeight: 700,
+  color: "#c0392b",
+  textTransform: "uppercase",
 };
 
 const title: React.CSSProperties = {
+  fontFamily: DUNGEON_DISPLAY,
   fontSize: 34,
   fontWeight: 900,
+  letterSpacing: 1,
   marginTop: 10,
-  color: "#f8fafc",
+  color: "#e2503f",
+  textShadow: "0 2px 0 rgba(0,0,0,0.5), 0 0 18px rgba(200,55,40,0.35)",
 };
 
 const bodyWrap: React.CSSProperties = {
@@ -148,7 +157,7 @@ const bodyText: React.CSSProperties = {
   margin: 0,
   fontSize: 19,
   lineHeight: 1.55,
-  color: "#cbd5e1",
+  color: "#b3aaa2",
 };
 
 const progressRow: React.CSSProperties = {
@@ -173,23 +182,28 @@ const buttonRow: React.CSSProperties = {
 };
 
 const primaryBtn: React.CSSProperties = {
-  border: "none",
-  borderRadius: 14,
-  padding: "12px 18px",
-  fontWeight: 800,
+  border: "1px solid rgba(0,0,0,0.45)",
+  borderRadius: 10,
+  padding: "12px 20px",
+  fontFamily: DUNGEON_DISPLAY,
+  fontWeight: 900,
+  letterSpacing: 0.5,
   fontSize: 16,
-  color: "white",
+  color: "#f6e7e2",
   cursor: "pointer",
-  background: "linear-gradient(135deg, #2563eb, #1d4ed8)",
+  background: "linear-gradient(180deg, #c0392b, #7f1d16)",
+  boxShadow: "0 10px 22px rgba(127,29,22,0.4), inset 0 1px 0 rgba(255,255,255,0.25)",
 };
 
 const secondaryBtn: React.CSSProperties = {
-  border: "1px solid #334155",
-  borderRadius: 14,
-  padding: "12px 18px",
-  fontWeight: 800,
+  border: "1px solid rgba(148,120,114,0.45)",
+  borderRadius: 10,
+  padding: "12px 20px",
+  fontFamily: DUNGEON_DISPLAY,
+  fontWeight: 700,
+  letterSpacing: 0.5,
   fontSize: 16,
-  color: "#e5e7eb",
+  color: "#e7ddd5",
   cursor: "pointer",
-  background: "#0f172a",
+  background: "rgba(20,14,9,0.55)",
 };

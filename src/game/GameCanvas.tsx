@@ -18,8 +18,8 @@ export default function GameCanvas() {
         minHeight: 0,
         borderRadius: 16,
         overflow: "hidden",
-        border: "1px solid #1f2a44",
-        background: "#050814",
+        border: "2px solid #9b2d2d",
+        background: "#0e0a06",
       }}
     />
   );

@@ -85,9 +85,10 @@ export default function ReviewModal() {
               style={{
                 padding: "12px 12px",
                 borderRadius: 14,
-                border: "1px solid #1f2a44",
-                background: a === "HEAL" ? "#133a25" : a === "FIGHT" ? "#2a1630" : "#0b1226",
-                color: "white",
+                border: "1px solid rgba(0,0,0,0.4)",
+                background: a === "HEAL" ? "linear-gradient(180deg, #2f9e44, #1d6b2c)" : a === "FIGHT" ? "linear-gradient(180deg, #c0392b, #7f1d16)" : "rgba(20,14,9,0.7)",
+                color: a === "HIDE" || a === "RUN" ? "#e7ddd5" : "white",
+                fontFamily: `"Cinzel", "Trajan Pro", Georgia, serif`,
                 fontWeight: 900,
                 cursor: "pointer",
               }}
@@ -108,10 +109,10 @@ export default function ReviewModal() {
                 onClick={() => choose(a)}
                 style={{
                   padding: "8px 10px",
-                  borderRadius: 12,
-                  border: "1px solid #1f2a44",
-                  background: "#0b1226",
-                  color: "white",
+                  borderRadius: 10,
+                  border: "1px solid rgba(148,120,114,0.45)",
+                  background: "rgba(20,14,9,0.7)",
+                  color: "#e7ddd5",
                   fontWeight: 800,
                   cursor: "pointer",
                 }}
@@ -139,11 +140,13 @@ const overlayStyle: React.CSSProperties = {
 const boxStyle: React.CSSProperties = {
   width: 420,
   padding: 20,
-  background: "#0b1020",
-  color: "white",
-  borderRadius: 12,
+  background:
+    "radial-gradient(130% 90% at 50% 0%, #282321 0%, #1b1816 45%, #120f0e 100%)",
+  color: "#e7ddd5",
+  borderRadius: 14,
   textAlign: "center",
-  border: "1px solid #1f2a44",
+  border: "2px solid #9b2d2d",
+  boxShadow: "0 0 24px rgba(155,45,45,0.3), inset 0 1px 0 rgba(226,80,63,0.10)",
 };
 
 const gridStyle: React.CSSProperties = {

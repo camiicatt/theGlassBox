@@ -17,6 +17,10 @@ import {
 const W = 12;
 const H = 12;
 const HERO_MAX_HP = 5;
+const TOP_HUD = 64; // reserved band at the top for the health bar + stage label
+const GRID_PAD = 24;
+const VISION_RANGE = 4; // how many tiles a monster can see (and the lit danger zone)
+const HIDE_MOVES = 3;   // protected moves granted by HIDE
 
 const HEAL_AMOUNT = 2;
 const HEAL_COOLDOWN_TURNS = 2;
@@ -258,9 +262,9 @@ console.log("hero texture", heroTex);
 console.log("slime texture", slimeTex);
 
     this.text = this.add.text(10, 10, "", {
-      fontFamily: "monospace",
-      fontSize: "18px",
-      color: "#ffffff",
+      fontFamily: "Georgia, 'Times New Roman', serif",
+      fontSize: "13px",
+      color: "#b3aaa2",
     }).setDepth(30);
 
     this.combatText = this.add.text(0, 0, "", {
@@ -268,7 +272,7 @@ console.log("slime texture", slimeTex);
       fontSize: "20px",
       color: "#fff7ed",
       align: "center",
-      backgroundColor: "#7c2d12",
+      backgroundColor: "#6e241a",
       padding: { left: 18, right: 18, top: 10, bottom: 10 },
       wordWrap: { width: 320 },
       stroke: "#431407",
@@ -543,8 +547,8 @@ console.log("slime texture", slimeTex);
     const styles = {
       danger: { bg: "#7f1d1d", color: "#f8fafc", stroke: "#450a0a" },
       success: { bg: "#166534", color: "#f0fdf4", stroke: "#14532d" },
-      info: { bg: "#1d4ed8", color: "#eff6ff", stroke: "#1e3a8a" },
-      warning: { bg: "#92400e", color: "#fffbeb", stroke: "#78350f" },
+      info: { bg: "#282321", color: "#e7ddd5", stroke: "#120f0e" },
+      warning: { bg: "#7f2a16", color: "#fffbeb", stroke: "#78350f" },
     };
   
     const style = styles[tone];
@@ -827,6 +831,7 @@ console.log("slime texture", slimeTex);
       heroDead?: boolean;
       enemyDead?: boolean;
       keepOpen?: boolean;
+      lunge?: "hero" | "enemy" | null;
     }
   ) {
     const st = useGameStore.getState();
@@ -868,6 +873,7 @@ console.log("slime texture", slimeTex);
       enemyHit: extras?.enemyHit ?? false,
       heroDead: extras?.heroDead ?? false,
       enemyDead: extras?.enemyDead ?? false,
+      lunge: extras?.lunge ?? null,
       aiMode: st.mode === "AI_RUN",
       aiThinking: this.aiPreviewThinking,
       aiChosenAction: this.aiPreviewAction,
@@ -991,7 +997,7 @@ console.log("slime texture", slimeTex);
 
         if (this.hiddenTurns > 0) {
           this.enemyWander(enemy);
-        } else if (this.canEnemySeeHero(enemy, 5)) {
+        } else if (this.canEnemySeeHero(enemy, VISION_RANGE)) {
           this.enemyChase(enemy);
         } else {
           this.enemyWander(enemy);
@@ -1024,6 +1030,7 @@ console.log("slime texture", slimeTex);
             heroHit: true,
             heroDead: this.hero.hp <= 0,
             keepOpen: true,
+            lunge: "enemy",
           });
         } else {
           this.showCombatText(`${this.enemyLabelFor(activeEnemy.kind)} missed!`);
@@ -1032,6 +1039,7 @@ console.log("slime texture", slimeTex);
             heroHit: false,
             heroDead: false,
             keepOpen: true,
+            lunge: "enemy",
           });
         }
 
@@ -1171,12 +1179,14 @@ console.log("slime texture", slimeTex);
     }
 
     if (action === "HIDE") {
-      this.hiddenTurns = Math.max(this.hiddenTurns, 3);
+      // +1 because endOfTurn decrements once on this same turn, so the hero
+      // still gets a full HIDE_MOVES turns of being unseen.
+      this.hiddenTurns = Math.max(this.hiddenTurns, HIDE_MOVES + 1);
       this.invulnTurns = Math.max(this.invulnTurns, 1);
       this.inBattleEncounter = false;
       this.battleJustStarted = false;
       this.activeEnemyId = null;
-      this.showCombatText("You hide in the shadows");
+      this.showCombatText(`You hide in the shadows (${HIDE_MOVES} moves)`);
       this.syncBattlePrompt({ lastAction: "HIDE" });
     }
   }
@@ -1201,6 +1211,7 @@ console.log("slime texture", slimeTex);
         enemyHit: false,
         enemyDead: false,
         keepOpen: true,
+        lunge: "hero",
       });
       return;
     }
@@ -1218,6 +1229,7 @@ console.log("slime texture", slimeTex);
         enemyHit: true,
         enemyDead: true,
         keepOpen: true,
+        lunge: "hero",
       });
 
       this.time.delayedCall(650, () => {
@@ -1247,6 +1259,7 @@ console.log("slime texture", slimeTex);
       enemyHit: true,
       enemyDead: false,
       keepOpen: true,
+      lunge: "hero",
     });
   }
 
@@ -1507,6 +1520,29 @@ console.log("slime texture", slimeTex);
     store.setPrediction(pred);
   }
 
+  private drawVisionZones(tile: number, ox: number, oy: number) {
+    // While the hero is hidden the monsters can't see — their danger zone stays dark.
+    if (this.hiddenTurns > 0) return;
+
+    for (const enemy of this.getLivingEnemies()) {
+      const minX = Math.max(0, enemy.x - VISION_RANGE);
+      const maxX = Math.min(W - 1, enemy.x + VISION_RANGE);
+      const minY = Math.max(0, enemy.y - VISION_RANGE);
+      const maxY = Math.min(H - 1, enemy.y + VISION_RANGE);
+
+      for (let yy = minY; yy <= maxY; yy++) {
+        for (let xx = minX; xx <= maxX; xx++) {
+          if (this.manhattan(xx, yy, enemy.x, enemy.y) > VISION_RANGE) continue;
+          if (this.grid[yy][xx] === 1) continue; // walls block the line of sight
+          if (!this.hasLineOfSight(enemy.x, enemy.y, xx, yy)) continue;
+          // Translucent red glow; overlapping monsters stack into a brighter zone.
+          this.graphics.fillStyle(0xef4444, 0.1);
+          this.graphics.fillRect(ox + xx * tile, oy + yy * tile, tile - 1, tile - 1);
+        }
+      }
+    }
+  }
+
   private render() {
     this.graphics.clear();
 
@@ -1521,7 +1557,7 @@ console.log("slime texture", slimeTex);
     this.healthBarSprite.setTexture(this.healthTextureFor(this.hero.hp));
 
     const centerX = this.scale.width / 2;
-    const topY = 0;
+    const topY = 8;
     const targetWidth = tile * 4.2;
     const naturalWidth = this.healthBarSprite.texture.getSourceImage().width;
     const scale = targetWidth / naturalWidth;
@@ -1530,15 +1566,43 @@ console.log("slime texture", slimeTex);
     this.healthBarSprite.setPosition(centerX, topY);
     this.healthBarSprite.setScale(scale);
 
+    const bevel = Math.max(2, Math.floor(tile * 0.16));
     for (let y = 0; y < H; y++) {
       for (let x = 0; x < W; x++) {
         const t = this.grid[y][x];
-        const fill = t === 1 ? 0x24314f : t === 3 ? 0x2f9e44 : 0x111827;
+        const px = ox + x * tile;
+        const py = oy + y * tile;
+        const s = tile - 1; // 1px gap reads as mortar between blocks
 
-        this.graphics.fillStyle(fill, 1);
-        this.graphics.fillRect(ox + x * tile, oy + y * tile, tile - 1, tile - 1);
+        if (t === 1) {
+          // Wall: raised stone block with a lit top edge and a shadowed base.
+          this.graphics.fillStyle(0x363230, 1);
+          this.graphics.fillRect(px, py, s, s);
+          this.graphics.fillStyle(0x524b45, 1);
+          this.graphics.fillRect(px, py, s, bevel);
+          this.graphics.fillStyle(0x524b45, 1);
+          this.graphics.fillRect(px, py, bevel, s);
+          this.graphics.fillStyle(0x1b1816, 1);
+          this.graphics.fillRect(px, py + s - bevel, s, bevel);
+          this.graphics.fillStyle(0x1b1816, 1);
+          this.graphics.fillRect(px + s - bevel, py, bevel, s);
+        } else if (t === 3) {
+          // Goal: a lit flagstone that glows beneath the exit ring.
+          this.graphics.fillStyle(0x181512, 1);
+          this.graphics.fillRect(px, py, s, s);
+          this.graphics.fillStyle(0x234a2c, 1);
+          this.graphics.fillRect(px + bevel, py + bevel, s - bevel * 2, s - bevel * 2);
+        } else {
+          // Floor: sunken dark flagstone with a faint inset so seams read.
+          this.graphics.fillStyle(0x151310, 1);
+          this.graphics.fillRect(px, py, s, s);
+          this.graphics.fillStyle(0x1f1b17, 1);
+          this.graphics.fillRect(px + 1, py + 1, s - 2, s - 2);
+        }
       }
     }
+
+    this.drawVisionZones(tile, ox, oy);
 
     const heroPos = centerOf(this.hero.x, this.hero.y);
     this.heroSprite.setVisible(true);
@@ -1574,14 +1638,25 @@ console.log("slime texture", slimeTex);
     }
 
     const goalPos = centerOf(this.goal.x, this.goal.y);
-    this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.08)), 0xfbbf24, 1);
+    this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.08)), 0x7bd47a, 1);
     this.graphics.strokeCircle(goalPos.px, goalPos.py, tile * 0.28);
-    this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.05)), 0xf59e0b, 1);
+    this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.05)), 0x2f9e44, 1);
     this.graphics.strokeCircle(goalPos.px, goalPos.py, tile * 0.16);
 
     if (this.hiddenTurns > 0) {
       this.graphics.lineStyle(Math.max(2, Math.floor(tile * 0.08)), 0x9ca3af, 1);
       this.graphics.strokeCircle(heroPos.px, heroPos.py, tile / 2);
+
+      // Countdown pips above the hero: how many hidden moves remain.
+      const pips = Math.min(HIDE_MOVES, this.hiddenTurns);
+      const r = Math.max(2, Math.floor(tile * 0.07));
+      const gap = r * 3;
+      const startX = heroPos.px - ((pips - 1) * gap) / 2;
+      const pipY = heroPos.py - tile * 0.5 - r * 2;
+      for (let i = 0; i < pips; i++) {
+        this.graphics.fillStyle(0x9ca3af, 1);
+        this.graphics.fillCircle(startX + i * gap, pipY, r);
+      }
     }
 
     const st = useGameStore.getState();
@@ -1592,8 +1667,9 @@ console.log("slime texture", slimeTex);
     );
     this.text.setVisible(true);
 
-    this.text.setPosition(ox + Math.max(8, tile * 0.3), Math.max(10, oy - 34));
-    const messageY = Math.max(60, oy - 6);
+    // Stage label sits below the grid so it never crowds the health bar band.
+    this.text.setPosition(ox, oy + tile * H + 6);
+    const messageY = Math.max(TOP_HUD + 4, oy + 4);
     this.combatText.setPosition(this.scale.width / 2, messageY);
     }
 
@@ -1734,9 +1810,8 @@ console.log("slime texture", slimeTex);
   }
 
   private getTileSize() {
-    const pad = 24;
-    const usableW = this.scale.width - pad * 2;
-    const usableH = this.scale.height - pad * 2;
+    const usableW = this.scale.width - GRID_PAD * 2;
+    const usableH = this.scale.height - GRID_PAD * 2 - TOP_HUD;
     return Math.floor(Math.min(usableW / W, usableH / H));
   }
 
@@ -1744,7 +1819,9 @@ console.log("slime texture", slimeTex);
     const gridW = tile * W;
     const gridH = tile * H;
     const ox = Math.floor((this.scale.width - gridW) / 2);
-    const oy = Math.floor((this.scale.height - gridH) / 2);
+    // Center the grid in the space below the reserved top HUD band.
+    const availH = this.scale.height - TOP_HUD - GRID_PAD;
+    const oy = TOP_HUD + Math.max(0, Math.floor((availH - gridH) / 2));
     return { ox, oy };
   }
 

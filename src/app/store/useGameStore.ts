@@ -50,6 +50,7 @@ export type BattlePrompt = {
   enemyHit?: boolean;
   heroDead?: boolean;
   enemyDead?: boolean;
+  lunge?: "hero" | "enemy" | null; // who steps forward to strike in the popup
 
   aiMode?: boolean;
   aiThinking?: boolean;

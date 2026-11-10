@@ -141,6 +141,8 @@ export default function OptionBoard() {
     if (!prompt) return "hero-idle";
     return [
       prompt.lastAction ?? "NONE",
+      prompt.lunge ?? "noLunge",
+      prompt.heroHit ? "heroHit" : "noHeroHit",
       prompt.enemyHit ? "enemyHit" : "noEnemyHit",
       prompt.heroDead ? "heroDead" : "heroAlive",
       prompt.heroHp,
@@ -148,6 +150,8 @@ export default function OptionBoard() {
     ].join("-");
   }, [
     prompt?.lastAction,
+    prompt?.lunge,
+    prompt?.heroHit,
     prompt?.enemyHit,
     prompt?.heroDead,
     prompt?.heroHp,
@@ -157,11 +161,13 @@ export default function OptionBoard() {
   const enemyMotionKey = useMemo(() => {
     if (!prompt) return "enemy-idle";
     return [
+      prompt.lunge ?? "noLunge",
       prompt.heroHit ? "heroHit" : "noHeroHit",
+      prompt.enemyHit ? "enemyHit" : "noEnemyHit",
       prompt.enemyDead ? "enemyDead" : "enemyAlive",
       prompt.enemyHp,
     ].join("-");
-  }, [prompt?.heroHit, prompt?.enemyDead, prompt?.enemyHp]);
+  }, [prompt?.lunge, prompt?.heroHit, prompt?.enemyHit, prompt?.enemyDead, prompt?.enemyHp]);
 
   if (!prompt || (!isTrainingMode && !isAiMode)) return null;
 
@@ -187,13 +193,14 @@ export default function OptionBoard() {
     console.log("prediction:", prediction?.probs);
     console.log("prompt.aiProbs:", prompt.aiProbs);
 
+  // The attacker steps forward; the one who got hit recoils.
   const heroFrameClass = [
     "battleSpriteFrame",
-    prompt.lastAction === "FIGHT" ? "heroAttack" : "",
+    prompt.lunge === "hero" ? "heroAttack" : "",
     prompt.lastAction === "HEAL" ? "heroHealPulse" : "",
     prompt.lastAction === "HIDE" ? "heroHideFade" : "",
     prompt.lastAction === "RUN" ? "heroRunStep" : "",
-    prompt.enemyHit ? "gotHit" : "",
+    prompt.lunge === "enemy" && prompt.heroHit ? "gotHit" : "",
     prompt.heroDead ? "deadRed" : "",
   ]
     .filter(Boolean)
@@ -201,7 +208,8 @@ export default function OptionBoard() {
 
   const enemyFrameClass = [
     "battleSpriteFrame",
-    prompt.heroHit ? "gotHit" : "",
+    prompt.lunge === "enemy" ? "enemyAttack" : "",
+    prompt.lunge === "hero" && prompt.enemyHit ? "gotHit" : "",
     prompt.enemyDead ? "deadRed" : "",
   ]
     .filter(Boolean)
@@ -260,6 +268,16 @@ export default function OptionBoard() {
           <div style={fighterCol}>
             <div style={fighterName}>Hero</div>
 
+            <div style={healthPanel}>
+              <div style={healthLabel}>Your Health</div>
+              <div style={healthValue}>
+                {prompt.heroHp}/{prompt.heroMaxHp}
+              </div>
+              <div style={barTrack}>
+                <div style={{ ...barFillHero, width: `${heroHpPct}%` }} />
+              </div>
+            </div>
+
             <div
               key={heroMotionKey}
               style={spriteFrameHero}
@@ -281,16 +299,6 @@ export default function OptionBoard() {
                 </div>
               ))}
             </div>
-
-            <div style={healthPanel}>
-              <div style={healthLabel}>Your Health</div>
-              <div style={healthValue}>
-                {prompt.heroHp}/{prompt.heroMaxHp}
-              </div>
-              <div style={barTrack}>
-                <div style={{ ...barFillHero, width: `${heroHpPct}%` }} />
-              </div>
-            </div>
           </div>
 
           <div style={vsWrap}>
@@ -299,6 +307,16 @@ export default function OptionBoard() {
 
           <div style={fighterCol}>
             <div style={fighterName}>{prompt.enemyName}</div>
+
+            <div style={healthPanel}>
+              <div style={healthLabel}>{prompt.enemyName} Health</div>
+              <div style={healthValue}>
+                {prompt.enemyHp}/{prompt.enemyMaxHp}
+              </div>
+              <div style={barTrack}>
+                <div style={{ ...barFillEnemy, width: `${enemyHpPct}%` }} />
+              </div>
+            </div>
 
             <div
               key={enemyMotionKey}
@@ -320,16 +338,6 @@ export default function OptionBoard() {
                   {fx.text}
                 </div>
               ))}
-            </div>
-
-            <div style={healthPanel}>
-              <div style={healthLabel}>{prompt.enemyName} Health</div>
-              <div style={healthValue}>
-                {prompt.enemyHp}/{prompt.enemyMaxHp}
-              </div>
-              <div style={barTrack}>
-                <div style={{ ...barFillEnemy, width: `${enemyHpPct}%` }} />
-              </div>
             </div>
           </div>
         </div>
@@ -380,6 +388,10 @@ export default function OptionBoard() {
 
         .heroAttack {
           animation: heroAttackAnim 480ms cubic-bezier(.2,.8,.2,1);
+        }
+
+        .enemyAttack {
+          animation: enemyAttackAnim 480ms cubic-bezier(.2,.8,.2,1);
         }
 
         .heroHealPulse {
@@ -439,6 +451,12 @@ export default function OptionBoard() {
           100% { transform: translateX(0) scale(1); }
         }
 
+        @keyframes enemyAttackAnim {
+          0% { transform: translateX(0) scale(1); }
+          35% { transform: translateX(-96px) scale(1.2); }
+          100% { transform: translateX(0) scale(1); }
+        }
+
         @keyframes gotHitAnim {
           0% { transform: translateX(0); }
           20% { transform: translateX(-18px); }
@@ -476,10 +494,17 @@ export default function OptionBoard() {
   );
 }
 
+const DUNGEON_DISPLAY = `"Cinzel", "Trajan Pro", Georgia, serif`;
+const PARCHMENT = "#e7ddd5";
+const PARCHMENT_DIM = "#b3aaa2";
+const TORCH_GOLD = "#e2503f";
+const BRONZE = "rgba(148,120,114,0.45)";
+const STONE_PANEL = "rgba(20,14,9,0.55)";
+
 const overlay: React.CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(2,6,23,0.48)",
+  background: "rgba(8,5,2,0.62)",
   backdropFilter: "blur(4px)",
   display: "flex",
   alignItems: "center",
@@ -490,12 +515,14 @@ const overlay: React.CSSProperties = {
 
 const card: React.CSSProperties = {
   width: "min(920px, 96vw)",
-  background: "linear-gradient(180deg, #0f172a 0%, #111827 100%)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 24,
-  boxShadow: "0 24px 70px rgba(0,0,0,0.42)",
+  background:
+    "radial-gradient(130% 90% at 50% 0%, #282321 0%, #1b1816 45%, #120f0e 100%)",
+  border: "2px solid #9b2d2d",
+  borderRadius: 20,
+  boxShadow:
+    "0 24px 70px rgba(0,0,0,0.6), 0 0 22px rgba(155,45,45,0.3), inset 0 1px 0 rgba(226,80,63,0.10), inset 0 0 60px rgba(0,0,0,0.5)",
   padding: 22,
-  color: "#f8fafc",
+  color: PARCHMENT,
 };
 
 const headerRow: React.CSSProperties = {
@@ -507,26 +534,31 @@ const headerRow: React.CSSProperties = {
 };
 
 const title: React.CSSProperties = {
-  fontSize: 28,
+  fontFamily: DUNGEON_DISPLAY,
+  fontSize: 30,
   fontWeight: 900,
-  letterSpacing: 0.3,
+  letterSpacing: 1,
+  color: TORCH_GOLD,
+  textShadow: "0 2px 0 rgba(0,0,0,0.5), 0 0 18px rgba(200,55,40,0.35)",
 };
 
 const subtitle: React.CSSProperties = {
   marginTop: 6,
   fontSize: 14,
-  color: "#cbd5e1",
+  color: PARCHMENT_DIM,
   lineHeight: 1.4,
   maxWidth: 520,
 };
 
 const enemyHpTop: React.CSSProperties = {
-  background: "rgba(255,255,255,0.06)",
-  border: "1px solid rgba(255,255,255,0.08)",
+  background: STONE_PANEL,
+  border: `1px solid ${BRONZE}`,
   borderRadius: 999,
   padding: "10px 14px",
-  fontWeight: 800,
+  fontFamily: DUNGEON_DISPLAY,
+  fontWeight: 700,
   fontSize: 14,
+  color: TORCH_GOLD,
   whiteSpace: "nowrap",
 };
 
@@ -546,16 +578,21 @@ const fighterCol: React.CSSProperties = {
 };
 
 const fighterName: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 900,
+  fontFamily: DUNGEON_DISPLAY,
+  fontSize: 19,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  color: PARCHMENT,
 };
 
 const spriteFrameHero: React.CSSProperties = {
   width: 190,
   height: 190,
-  borderRadius: 22,
-  background: "radial-gradient(circle at 50% 35%, rgba(59,130,246,0.22), rgba(15,23,42,0.2))",
-  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 14,
+  background:
+    "radial-gradient(circle at 50% 35%, rgba(200,70,55,0.20), rgba(24,17,11,0.35))",
+  border: `1px solid ${BRONZE}`,
+  boxShadow: "inset 0 0 30px rgba(0,0,0,0.55)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -566,9 +603,11 @@ const spriteFrameHero: React.CSSProperties = {
 const spriteFrameEnemy: React.CSSProperties = {
   width: 190,
   height: 190,
-  borderRadius: 22,
-  background: "radial-gradient(circle at 50% 35%, rgba(239,68,68,0.2), rgba(15,23,42,0.2))",
-  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 14,
+  background:
+    "radial-gradient(circle at 50% 35%, rgba(190,50,40,0.28), rgba(24,17,11,0.35))",
+  border: `1px solid ${BRONZE}`,
+  boxShadow: "inset 0 0 30px rgba(0,0,0,0.55)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -590,74 +629,89 @@ const vsWrap: React.CSSProperties = {
 };
 
 const vsText: React.CSSProperties = {
-  fontSize: 28,
+  fontFamily: DUNGEON_DISPLAY,
+  fontSize: 30,
   fontWeight: 900,
-  color: "#fde68a",
-  opacity: 0.9,
+  color: TORCH_GOLD,
+  textShadow: "0 0 16px rgba(200,55,40,0.4)",
+  opacity: 0.95,
 };
 
 const healthPanel: React.CSSProperties = {
   width: "100%",
   maxWidth: 220,
-  background: "rgba(255,255,255,0.04)",
-  borderRadius: 16,
+  background: STONE_PANEL,
+  borderRadius: 12,
   padding: 12,
-  border: "1px solid rgba(255,255,255,0.08)",
+  border: `1px solid ${BRONZE}`,
+  boxShadow: "inset 0 1px 0 rgba(226,80,63,0.08)",
 };
 
 const healthLabel: React.CSSProperties = {
+  fontFamily: DUNGEON_DISPLAY,
   fontSize: 12,
-  color: "#cbd5e1",
+  color: PARCHMENT_DIM,
   marginBottom: 4,
-  fontWeight: 700,
+  fontWeight: 600,
+  letterSpacing: 0.6,
+  textTransform: "uppercase",
 };
 
 const healthValue: React.CSSProperties = {
-  fontSize: 16,
-  fontWeight: 900,
+  fontFamily: DUNGEON_DISPLAY,
+  fontSize: 18,
+  fontWeight: 700,
+  color: PARCHMENT,
   marginBottom: 8,
 };
 
 const barTrack: React.CSSProperties = {
   width: "100%",
-  height: 12,
-  background: "rgba(255,255,255,0.08)",
-  borderRadius: 999,
+  height: 20,
+  background: "rgba(0,0,0,0.45)",
+  borderRadius: 6,
+  border: "1px solid rgba(0,0,0,0.5)",
+  boxShadow: "inset 0 2px 5px rgba(0,0,0,0.6)",
   overflow: "hidden",
 };
 
 const barFillHero: React.CSSProperties = {
   height: "100%",
-  borderRadius: 999,
-  background: "linear-gradient(90deg, #22c55e, #86efac)",
+  borderRadius: 5,
+  background: "linear-gradient(180deg, #7bd47a 0%, #2f9e44 55%, #1d6b2c 100%)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.35)",
 };
 
 const barFillEnemy: React.CSSProperties = {
   height: "100%",
-  borderRadius: 999,
-  background: "linear-gradient(90deg, #ef4444, #fca5a5)",
+  borderRadius: 5,
+  background: "linear-gradient(180deg, #e06a5a 0%, #c0392b 55%, #7f1d16 100%)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.28)",
 };
 
 const enemyActionBox: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)",
-  border: "1px solid rgba(255,255,255,0.08)",
-  borderRadius: 18,
+  background: STONE_PANEL,
+  border: `1px solid ${BRONZE}`,
+  borderRadius: 12,
   padding: 14,
   marginBottom: 18,
+  boxShadow: "inset 0 2px 8px rgba(0,0,0,0.4)",
 };
 
 const feedLabel: React.CSSProperties = {
+  fontFamily: DUNGEON_DISPLAY,
   fontSize: 12,
-  fontWeight: 800,
-  color: "#93c5fd",
+  fontWeight: 700,
+  color: TORCH_GOLD,
   textTransform: "uppercase",
-  letterSpacing: 0.8,
+  letterSpacing: 1,
   marginBottom: 6,
 };
 
 const feedText: React.CSSProperties = {
   fontSize: 16,
-  fontWeight: 700,
+  fontWeight: 600,
+  color: PARCHMENT,
   lineHeight: 1.4,
 };
 
@@ -669,8 +723,8 @@ const buttonGrid: React.CSSProperties = {
 };
 
 const baseBtn: React.CSSProperties = {
-  border: "none",
-  borderRadius: 18,
+  border: "1px solid rgba(0,0,0,0.45)",
+  borderRadius: 12,
   padding: "16px 16px 14px",
   color: "#fff",
   fontWeight: 900,
@@ -700,7 +754,7 @@ const healBtn: React.CSSProperties = {
 
 const runBtn: React.CSSProperties = {
   ...baseBtn,
-  background: "linear-gradient(180deg, #d97706, #92400e)",
+  background: "linear-gradient(180deg, #d97706, #7f2a16)",
   boxShadow: "0 12px 24px rgba(146,64,14,0.35)",
 };
 
@@ -715,8 +769,10 @@ const aiChosenBtn: React.CSSProperties = {
 };
 
 const actionTitle: React.CSSProperties = {
+  fontFamily: DUNGEON_DISPLAY,
   fontSize: 20,
-  fontWeight: 900,
+  fontWeight: 700,
+  letterSpacing: 0.5,
 };
 
 const confidenceText: React.CSSProperties = {
@@ -742,7 +798,8 @@ const miniFill: React.CSSProperties = {
 
 const footerText: React.CSSProperties = {
   fontSize: 13,
-  color: "#cbd5e1",
+  color: PARCHMENT_DIM,
   textAlign: "center",
-  fontWeight: 700,
+  fontWeight: 600,
+  fontStyle: "italic",
 };

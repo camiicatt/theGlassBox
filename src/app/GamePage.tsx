@@ -14,8 +14,8 @@ export default function GamePage() {
     <div
       style={{
         height: "100vh",
-        background: mode === "AI_RUN" ? "#ff0000ff" : "#050814",
-        color: mode === "AI_RUN" ? "#0c1a2e" : "#e5e7eb",
+        background: mode === "AI_RUN" ? "#ff0000ff" : "#100e0d",
+        color: mode === "AI_RUN" ? "#0c1a2e" : "#e7ddd5",
         padding: 16,
         boxSizing: "border-box",
         display: "grid",

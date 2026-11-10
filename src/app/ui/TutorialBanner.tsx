@@ -23,10 +23,12 @@ export default function TutorialBanner() {
 
 const bar: React.CSSProperties = {
   padding: "10px 14px",
-  borderRadius: 16,
-  border: "1px solid #1f2a44",
-  background: "linear-gradient(135deg, rgba(17,26,51,0.95), rgba(11,16,32,0.95))",
-  color: "#e5e7eb",
+  borderRadius: 12,
+  border: "1px solid #9b2d2d",
+  background:
+    "linear-gradient(135deg, rgba(34,30,29,0.96), rgba(22,19,18,0.96))",
+  color: "#e7ddd5",
+  fontFamily: `"Cinzel", "Trajan Pro", Georgia, serif`,
   display: "flex",
   justifyContent: "space-between",
   gap: 16,
