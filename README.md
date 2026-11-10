@@ -1,78 +1,60 @@
-<<<<<<< HEAD
-# theGlassBox
-teaching ai
-=======
-# React + TypeScript + Vite
+# The Glass Box
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+An RPG dungeon crawler that teaches kids how machine learning works — by letting
+the game's AI learn to play *like them*, using a model you can actually see inside.
 
-Currently, two official plugins are available:
+The child plays a hero through a dungeon. Every move they make becomes a labeled
+training example, and an AI hero learns to imitate their playstyle. The twist is
+the model: instead of an opaque neural network, it uses **k-nearest neighbors**, so
+the AI's reasoning is fully transparent — you can point at the exact past moments
+that drove any decision. That interpretability is the whole point, and the name.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## How it works
 
-## React Compiler
+- **Every move is a training example.** Each decision is stored as `(state, action)` —
+  the situation the player was in, and what they chose.
+- **State encoding** (`src/game/stateEncoding.ts`). Each situation becomes a
+  29-dimensional feature vector: a 5×5 grid of tiles around the hero (empty, wall,
+  enemy, goal) plus status features (hero health, heal cooldown, turns hidden,
+  nearest enemy health). Health is scaled to match the tile range so it carries
+  comparable weight in the distance metric.
+- **The model** (`src/ai/knn.ts`). To pick the AI hero's next move, it finds the `k`
+  nearest past situations (k = 7, Euclidean distance) and takes a distance-weighted
+  vote over the actions taken there, returning a probability per action plus a
+  confidence score.
+- **Explainability** (`src/app/ui/HeroBrainPanel.tsx`). The AI's "brain" is just the
+  set of examples the player created, so the UI can show *why* it acted.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Stack
 
-## Expanding the ESLint configuration
+- **Phaser** — game engine / dungeon rendering
+- **React + Vite + TypeScript** — app shell and UI
+- **Zustand** — game and model state
+- **Supabase** — play-session logging and persistence
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## Run it locally
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm install
+pnpm dev
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+Other scripts:
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+pnpm build     # type-check and build for production
+pnpm preview   # preview the production build
+pnpm lint      # run ESLint
 ```
->>>>>>> cami-from-zander
+
+## Project layout
+
+```
+src/
+  ai/knn.ts            k-nearest-neighbors classifier
+  game/stateEncoding.ts   situation -> feature vector
+  game/actions.ts      the action space
+  phaser/              Phaser scenes and game setup
+  app/                 React pages and UI (incl. HeroBrainPanel)
+  lib/                 Supabase logging, CSV export, backups
+```
